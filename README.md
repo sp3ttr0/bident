@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/bident-logo.svg" alt="Bident logo" width="160">
+</p>
+
 # Bident
 
 Bident is a network VAPT helper for authorized internal reconnaissance. It expands a scope file or single target, discovers live hosts, runs TCP and optional UDP port scans, launches targeted follow-up checks only when matching ports are confirmed open, and generates organized text outputs plus a searchable HTML report.
