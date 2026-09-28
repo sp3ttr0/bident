@@ -312,6 +312,8 @@ run_ssl_external_checks() {
   local port
   local ssl_targets=()
   local entry
+  local total_targets=0
+  local completed_targets=0
 
   if command_available testssl; then
     has_testssl=true
@@ -344,17 +346,27 @@ run_ssl_external_checks() {
     return
   fi
 
+  total_targets="${#ssl_targets[@]}"
+
   if [[ "$has_testssl" == true ]]; then
     printf '\n%sRunning testssl%s\n' "$CLR_CYAN" "$CLR_RESET"
+    completed_targets=0
+    print_progress_bar "testssl Progress" "$completed_targets" "$total_targets"
     for entry in "${ssl_targets[@]}"; do
       run_logged ${TOOL_DIR}/testssl_results.txt testssl "$entry" || true
+      completed_targets=$((completed_targets + 1))
+      print_progress_bar "testssl Progress" "$completed_targets" "$total_targets"
     done
   fi
 
   if [[ "$has_sslscan" == true ]]; then
     printf '%sRunning sslscan%s\n' "$CLR_CYAN" "$CLR_RESET"
+    completed_targets=0
+    print_progress_bar "sslscan Progress" "$completed_targets" "$total_targets"
     for entry in "${ssl_targets[@]}"; do
       run_logged ${TOOL_DIR}/sslscan_results.txt sslscan "$entry" || true
+      completed_targets=$((completed_targets + 1))
+      print_progress_bar "sslscan Progress" "$completed_targets" "$total_targets"
     done
   fi
 
