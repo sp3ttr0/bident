@@ -303,6 +303,8 @@ run_ssl_external_checks() {
   local has_sslscan=false
   local target
   local port
+  local ssl_targets=()
+  local entry
 
   if command_available testssl; then
     has_testssl=true
@@ -325,20 +327,28 @@ run_ssl_external_checks() {
   while read -r target port; do
     [[ -n "${target:-}" ]] || continue
     found=true
-
-    if [[ "$has_testssl" == true ]]; then
-      printf '\n%sRunning testssl Against:%s %s:%s\n' "$CLR_CYAN" "$CLR_RESET" "$target" "$port"
-      run_logged testssl_results.txt testssl "${target}:${port}" || true
-    fi
-
-    if [[ "$has_sslscan" == true ]]; then
-      printf '%sRunning sslscan Against:%s %s:%s\n' "$CLR_CYAN" "$CLR_RESET" "$target" "$port"
-      run_logged sslscan_results.txt sslscan "${target}:${port}" || true
-    fi
+    ssl_targets+=("${target}:${port}")
   done < <(open_target_ports tcp 443 465 587 636 993 995 3269 3389 8443)
 
   if [[ "$found" == false ]]; then
     printf '%sNo SSL/TLS Ports Found For testssl/sslscan%s\n' "$CLR_YELLOW" "$CLR_RESET"
+    [[ ! -e testssl_results.txt || -s testssl_results.txt ]] || rm -f testssl_results.txt
+    [[ ! -e sslscan_results.txt || -s sslscan_results.txt ]] || rm -f sslscan_results.txt
+    return
+  fi
+
+  if [[ "$has_testssl" == true ]]; then
+    printf '\n%sRunning testssl%s\n' "$CLR_CYAN" "$CLR_RESET"
+    for entry in "${ssl_targets[@]}"; do
+      run_logged testssl_results.txt testssl "$entry" || true
+    done
+  fi
+
+  if [[ "$has_sslscan" == true ]]; then
+    printf '%sRunning sslscan%s\n' "$CLR_CYAN" "$CLR_RESET"
+    for entry in "${ssl_targets[@]}"; do
+      run_logged sslscan_results.txt sslscan "$entry" || true
+    done
   fi
 
   [[ ! -e testssl_results.txt || -s testssl_results.txt ]] || rm -f testssl_results.txt
