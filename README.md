@@ -25,7 +25,6 @@ Optional tools used when matching ports are found:
 netexec ssh-audit impacket-rpcdump rpcclient ldapsearch dig testssl sslscan ike-scan responder
 ```
 
-Bident should be run with `sudo` so scans running in detached `screen` sessions do not stop for password prompts.
 
 ## Installation
 
@@ -46,25 +45,11 @@ sudo apt install -y nmap screen dnsutils ldap-utils smbclient
 
 Install optional tools as needed for deeper checks.
 
-## Project Structure
-
-```text
-bident.sh              Main launcher.
-lib/config.sh          Defaults, colors, and port lists.
-lib/ui.sh              Help text and terminal banner.
-lib/utils.sh           Shared utility helpers.
-lib/screens.sh         Screen session handling, cancellation, and progress.
-lib/ports.sh           Open-port parsing and target/port exports.
-lib/checks.sh          Conditional follow-up checks.
-lib/report.sh          HTML report generation.
-lib/workflow.sh        Main scan workflow.
-assets/bident-logo.svg Logo asset used by the README.
-```
 
 ## Usage
 
 ```bash
-sudo ./bident.sh (-f <scope-file> | -t <target>) [-o <results-dir>] [-p-] [--no-udp] [--responder] [-T1|-T2|-T3|-T4|-T5]
+sudo ./bident.sh (-f <scope-file> | -t <target>) [-o <results-dir>] [options] ...
 ```
 
 ### Target Input
@@ -111,14 +96,6 @@ Write results to a custom folder:
 ```bash
 sudo ./bident.sh -f scope.txt -o client_scan_results -p-
 ```
-
-Start Responder separately while scanning:
-
-```bash
-sudo ./bident.sh -f scope.txt --responder
-```
-
-Responder is intentionally not stopped by Bident when the scan finishes or is cancelled.
 
 
 ## Disclaimer
