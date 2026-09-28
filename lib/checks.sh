@@ -43,11 +43,45 @@ print_check_result() {
   local label="$1"
   local result_file="$2"
 
-  if [[ -s "$result_file" ]]; then
+  if result_output_has_finding "$label" "$result_file"; then
     printf '%s%s Found%s\n' "$CLR_GREEN" "$label" "$CLR_RESET"
   else
     printf '%sNo %s Found%s\n' "$CLR_YELLOW" "$label" "$CLR_RESET"
   fi
+}
+
+result_output_has_finding() {
+  local label="$1"
+  local result_file="$2"
+
+  [[ -s "$result_file" ]] || return 1
+
+  case "$label" in
+    "Weak SSH Ciphers")
+      grep -Eiq '\(fail\)|\[fail\]|\(warn\)|\[warn\]|(^|[^[:alnum:]])(weak|deprecated|insecure|cbc|arcfour|3des|blowfish|rijndael|diffie-hellman-group1|diffie-hellman-group14-sha1|ssh-rsa|dss|md5|sha-?1)([^[:alnum:]]|$)' "$result_file"
+      ;;
+    "Exposed RPC Services")
+      grep -Eiq '(^Protocol:|^Provider:|^[[:space:]]*[0-9a-fA-F-]{36}|ncacn_|MS-RPCE|uuid)' "$result_file" &&
+        ! grep -Eiq 'connection refused|NT_STATUS_|failed|error|timed out|No route to host' "$result_file"
+      ;;
+    "Unauthenticated Remote Procedure Call")
+      grep -Eiq 'Se[A-Za-z]+Privilege|found[[:space:]]+[0-9]+[[:space:]]+privileges|privilege' "$result_file" &&
+        ! grep -Eiq 'NT_STATUS_ACCESS_DENIED|NT_STATUS_LOGON_FAILURE|Cannot connect|failed|error|timed out' "$result_file"
+      ;;
+    "LDAP Anonymous Bind")
+      grep -Eiq '^(dn:|namingContexts:|defaultNamingContext:|rootDomainNamingContext:|supportedLDAPVersion:|supportedSASLMechanisms:)' "$result_file" &&
+        ! grep -Eiq 'Invalid credentials|Can.t contact LDAP server|ldap_bind:|failed|error|timed out' "$result_file"
+      ;;
+    "Misconfigured Server Message Block Signing")
+      grep -Eq 'signing:False' "$result_file"
+      ;;
+    "SMBv1 Enabled")
+      grep -Eq 'SMBv1:True' "$result_file"
+      ;;
+    *)
+      grep -Ev '^[[:space:]]*$|^===== |^Command:' "$result_file" >/dev/null
+      ;;
+  esac
 }
 
 run_logged_check() {
@@ -58,9 +92,13 @@ run_logged_check() {
   shift 2
 
   temp_output="$(mktemp "${TMPDIR:-/tmp}/bident_check.XXXXXX")"
-  append_command_header "$outfile" "$@"
   "$@" > "$temp_output" 2>&1 || status=$?
-  cat "$temp_output" >> "$outfile"
+  if result_output_has_finding "$label" "$temp_output"; then
+    append_command_header "$outfile" "$@"
+    cat "$temp_output" >> "$outfile"
+  elif [[ ! -s "$outfile" ]]; then
+    rm -f "$outfile"
+  fi
   print_check_result "$label" "$temp_output"
   rm -f "$temp_output"
   return "$status"
@@ -72,6 +110,7 @@ run_rpc_135_checks() {
   local port
 
   printf '\n%sChecking MSRPC (135)%s\n' "$CLR_CYAN" "$CLR_RESET"
+  rm -f s_rpcdump_135.txt s_rpcclient_135.txt
 
   while read -r target port; do
     [[ -n "${target:-}" ]] || continue
@@ -101,6 +140,8 @@ run_ldapsearch_checks() {
   local found=false
   local target
   local port
+
+  rm -f s_ldapsearch.txt
 
   while read -r target port; do
     [[ -n "${target:-}" ]] || continue
@@ -185,6 +226,7 @@ run_ssh_audit_check() {
   fi
 
   printf '\n%sChecking For Weak SSH Ciphers%s\n' "$CLR_CYAN" "$CLR_RESET"
+  rm -f ssh-audit_results.txt
   run_logged_check "Weak SSH Ciphers" ssh-audit_results.txt ssh-audit -T "$LIVE_TARGETS_FILE" || true
 }
 
