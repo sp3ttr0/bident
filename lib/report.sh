@@ -768,6 +768,7 @@ HTML
       const query = serviceSearch.value.trim().toLowerCase();
       rows.forEach((row) => {
         row.style.display = row.textContent.toLowerCase().includes(query) ? '' : 'none';
+      });
     });
 
     servicesTable.querySelectorAll('.sort-button').forEach((button) => {
