@@ -103,8 +103,6 @@ Responder is intentionally not stopped by Bident when the scan finishes or is ca
 
 
 
-Answering `y` stops the active scan screens for SYN, connect, and UDP scans. Responder is not stopped automatically.
-
 ## Disclaimer
 
 Bident is intended only for authorized security testing, validation, and assessment work. Some findings may be false positives and should be manually verified before action is taken. Do not run this tool against systems, networks, or assets you do not own or do not have explicit permission to test.
