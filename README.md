@@ -11,18 +11,6 @@ Network VAPT Tool
 by sp3ttr0
 ```
 
-## Features
-
-- Scope expansion from CIDR ranges, hostnames, or IP lists.
-- Live host discovery before port scanning.
-- Parallel TCP SYN, TCP connect, and optional UDP scans through `screen`.
-- Optional all-port scanning with `-p-`.
-- Timing control with `-T1` through `-T5`.
-- Targeted follow-up checks based on confirmed open ports.
-- Per-port target lists under `targets_with_open_ports/`.
-- HTML report with light/dark mode, searchable sortable Services table, open ports grouped by port number, and expandable result panels.
-- Graceful no-live-host handling and Ctrl+C cancellation prompt.
-
 ## Requirements
 
 Core tools:
@@ -132,82 +120,6 @@ sudo ./bident.sh -f scope.txt --responder
 
 Responder is intentionally not stopped by Bident when the scan finishes or is cancelled.
 
-## Output
-
-Bident creates a parent results folder and copies the scope file into it. Common outputs include:
-
-```text
-targets.txt
-targets_live.txt
-syn.nmap / syn.gnmap / syn.xml
-con.nmap / con.gnmap / con.xml
-udp.nmap / udp.gnmap / udp.xml
-report.html
-targets_with_open_ports/
-```
-
-The `targets_with_open_ports/` folder includes:
-
-```text
-services.tsv
-open_ports_all.tsv
-open_ports_mentioned.tsv
-open_ports_by_target.txt
-tcp_<port>.txt
-udp_<port>.txt
-```
-
-Per-port files are generated only when matching open ports are found.
-
-## HTML Report
-
-`report.html` includes:
-
-- scan summary metrics
-- Services table
-- sortable columns
-- search textbox
-- open ports grouped by port number
-- expandable Hosts/IPs and result panels
-- Core Artifacts list
-- light/dark mode toggle
-- legal and validation disclaimer
-
-The Services table uses these columns:
-
-```text
-Hosts/IPs
-Port/Protocol
-Name
-Info
-Hosts/IPs:Port
-```
-
-By default, Services are sorted by `Port/Protocol` from lowest to highest.
-
-## Conditional Checks
-
-Bident runs follow-up checks only when the related port is confirmed open in the base scan results. Examples include:
-
-- FTP, SSH, Telnet, SMTP, DNS, HTTP/HTTPS, SSL/TLS, Kerberos, POP3
-- RPCBind, MSRPC, NTP, NetBIOS, SMB, SNMP, LDAP, IKE, IPMI
-- MSSQL, Oracle, NFS, MySQL, RDP, SIP, VNC, AJP
-- Weak SSH cipher checks with `ssh-audit`
-- SMB signing and SMBv1 checks with `netexec`
-- LDAP anonymous bind checks with `ldapsearch`
-- DNSSEC and DNS recursion checks with `dig`
-- SSL/TLS checks with `testssl` and `sslscan`
-- IKE weak encryption checks with `ike-scan`
-
-## Cancellation
-
-Pressing `Ctrl+C` prompts:
-
-```text
-Cancel the script? [y/N]:
-```
-
-Answering `y` stops the active scan screens for SYN, connect, and UDP scans. Responder is not stopped automatically.
 
 ## Disclaimer
 
