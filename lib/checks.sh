@@ -50,6 +50,10 @@ print_check_result() {
   fi
 }
 
+print_smb_relay_note() {
+  printf '%sNote:%s Possible for Server Message Block (SMB) Relay Attack when SMB signing is disabled.\n' "$CLR_YELLOW" "$CLR_RESET"
+}
+
 result_output_has_finding() {
   local label="$1"
   local result_file="$2"
@@ -192,12 +196,15 @@ run_smb_external_checks() {
   netexec smb --gen-relay-list ${TOOL_DIR}/targets_smb.txt "$LIVE_TARGETS_FILE" 2>&1 \
     | grep 'signing:False' > "$temp_output" || true
   if [[ -s "$temp_output" ]]; then
-    append_command_header ${TOOL_DIR}/cme_smb_signing_false.txt netexec smb --gen-relay-list ${TOOL_DIR}/targets_smb.txt "$LIVE_TARGETS_FILE"
-    cat "$temp_output" >> ${TOOL_DIR}/cme_smb_signing_false.txt
+    append_command_header ${TOOL_DIR}/nxc_smb_signing_false.txt netexec smb --gen-relay-list ${TOOL_DIR}/targets_smb.txt "$LIVE_TARGETS_FILE"
+    cat "$temp_output" >> ${TOOL_DIR}/nxc_smb_signing_false.txt
   else
-    rm -f ${TOOL_DIR}/cme_smb_signing_false.txt
+    rm -f ${TOOL_DIR}/nxc_smb_signing_false.txt
   fi
   print_check_result "Misconfigured Server Message Block Signing" "$temp_output"
+  if result_output_has_finding "Misconfigured Server Message Block Signing" "$temp_output"; then
+    print_smb_relay_note
+  fi
   rm -f "$temp_output"
 
   printf '%sChecking For SMBv1 Enabled%s\n' "$CLR_CYAN" "$CLR_RESET"
@@ -205,10 +212,10 @@ run_smb_external_checks() {
   netexec smb "$LIVE_TARGETS_FILE" 2>&1 \
     | grep 'SMBv1:True' > "$temp_output" || true
   if [[ -s "$temp_output" ]]; then
-    append_command_header ${TOOL_DIR}/cme_smbv1_true.txt netexec smb "$LIVE_TARGETS_FILE"
-    cat "$temp_output" >> ${TOOL_DIR}/cme_smbv1_true.txt
+    append_command_header ${TOOL_DIR}/nxc_smbv1_true.txt netexec smb "$LIVE_TARGETS_FILE"
+    cat "$temp_output" >> ${TOOL_DIR}/nxc_smbv1_true.txt
   else
-    rm -f ${TOOL_DIR}/cme_smbv1_true.txt
+    rm -f ${TOOL_DIR}/nxc_smbv1_true.txt
   fi
   print_check_result "SMBv1 Enabled" "$temp_output"
   rm -f "$temp_output"

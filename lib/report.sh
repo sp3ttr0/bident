@@ -111,6 +111,96 @@ append_ssl_external_result_files() {
   append_result_file_section "$outfile" sslscan_results.txt
 }
 
+normalize_service_name() {
+  local proto="$1"
+  local port="$2"
+  local name="${3:-}"
+  local lowered
+
+  lowered="$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]')"
+
+  case "${proto}/${port}" in
+    tcp/443|tcp/8443)
+      printf 'HTTPS'
+      return
+      ;;
+    tcp/80|tcp/81|tcp/8000|tcp/8080)
+      printf 'HTTP'
+      return
+      ;;
+  esac
+
+  case "$lowered" in
+    ""|unknown)
+      case "${proto}/${port}" in
+        tcp/21) printf 'FTP' ;;
+        tcp/22) printf 'SSH' ;;
+        tcp/23) printf 'Telnet' ;;
+        tcp/25|tcp/465|tcp/587) printf 'SMTP' ;;
+        tcp/53|udp/53) printf 'DNS' ;;
+        tcp/88) printf 'Kerberos' ;;
+        tcp/110|tcp/995) printf 'POP3' ;;
+        tcp/111|udp/111) printf 'RPCBind' ;;
+        tcp/135) printf 'MSRPC' ;;
+        udp/123) printf 'NTP' ;;
+        udp/137) printf 'NetBIOS' ;;
+        tcp/139|tcp/445) printf 'SMB' ;;
+        udp/161|udp/162) printf 'SNMP' ;;
+        tcp/389|tcp/636|tcp/3268|tcp/3269) printf 'LDAP' ;;
+        udp/500) printf 'IKE' ;;
+        udp/623) printf 'IPMI' ;;
+        tcp/1433) printf 'MSSQL' ;;
+        tcp/1521) printf 'Oracle' ;;
+        tcp/2049) printf 'NFS' ;;
+        tcp/3306) printf 'MySQL' ;;
+        tcp/3389) printf 'RDP' ;;
+        udp/5060) printf 'SIP' ;;
+        tcp/5800|tcp/5801|tcp/5900|tcp/5901) printf 'VNC' ;;
+        tcp/8009) printf 'AJP' ;;
+        *) printf 'Unknown' ;;
+      esac
+      ;;
+    ssl\|http|ssl/http|https)
+      printf 'HTTPS'
+      ;;
+    ms-sql*|mssql*)
+      printf 'MSSQL'
+      ;;
+    mysql*)
+      printf 'MySQL'
+      ;;
+    netbios*|netbios-ssn)
+      printf 'NetBIOS'
+      ;;
+    microsoft-ds)
+      printf 'SMB'
+      ;;
+    *)
+      printf '%s' "$name" | awk '{print toupper(substr($0, 1, 1)) substr($0, 2)}'
+      ;;
+  esac
+}
+
+port_card_label() {
+  local proto="$1"
+  local port="$2"
+  local services_tsv="$3"
+  local name=""
+  local proto_upper
+
+  proto_upper="$(printf '%s' "$proto" | tr '[:lower:]' '[:upper:]')"
+  if [[ -s "$services_tsv" ]]; then
+    name="$(awk -F '\t' -v wanted_proto="$proto" -v wanted_port="$port" '
+      NR > 1 && $2 == wanted_proto && $3 == wanted_port && $4 != "" {
+        print $4
+        exit
+      }
+    ' "$services_tsv")"
+  fi
+
+  printf '%s/%s (%s)' "$port" "$proto_upper" "$(normalize_service_name "$proto" "$port" "$name")"
+}
+
 append_port_result_files() {
   local outfile="$1"
   local proto="$2"
@@ -138,7 +228,7 @@ append_port_result_files() {
       append_result_file_section "$outfile" s_http.txt
       ;;
     tcp/443|tcp/8443)
-      append_result_file_section "$outfile" s_http.txt
+      append_result_file_section "$outfile" s_http.txt "HTTPS NMAP Results"
       append_result_file_section "$outfile" ssl_tls_results.txt
       append_ssl_external_result_files "$outfile"
       ;;
@@ -165,8 +255,8 @@ append_port_result_files() {
     udp/137) append_result_file_section "$outfile" s_netbios.txt ;;
     tcp/139|tcp/445)
       append_result_file_section "$outfile" s_smb.txt
-      append_result_file_section "$outfile" cme_smb_signing_false.txt "Misconfigured Server Message Block Signing"
-      append_result_file_section "$outfile" cme_smbv1_true.txt "SMBv1 Enabled"
+      append_result_file_section "$outfile" nxc_smb_signing_false.txt "Misconfigured Server Message Block Signing"
+      append_result_file_section "$outfile" nxc_smbv1_true.txt "SMBv1 Enabled"
       ;;
     udp/161|udp/162) append_result_file_section "$outfile" s_snmp.txt ;;
     tcp/389|tcp/3268)
@@ -214,6 +304,7 @@ generate_html_report() {
   local previous_proto=""
   local previous_port=""
   local first_group=true
+  local display_label=""
 
   [[ -f "$TARGETS_FILE" ]] && scope_count="$(wc -l < "$TARGETS_FILE" | tr -d '[:space:]')"
   [[ -f "$LIVE_TARGETS_FILE" ]] && live_count="$(wc -l < "$LIVE_TARGETS_FILE" | tr -d '[:space:]')"
@@ -687,7 +778,7 @@ HTML
     } >> "$report_file"
   fi
 
-  printf '  <h2>Open Ports By Port Number</h2>\n' >> "$report_file"
+  printf '  <h2>Open Ports Found</h2>\n' >> "$report_file"
 
   if [[ ! -s "$open_tsv" || "$open_rows" -eq 0 ]]; then
     printf '  <div class="empty">No open ports were confirmed.</div>\n' >> "$report_file"
@@ -705,9 +796,10 @@ HTML
         previous_key="$key"
         previous_proto="$proto"
         previous_port="$port"
+        display_label="$(port_card_label "$proto" "$port" "$services_tsv")"
         printf '    <details class="port-card" name="open-port">\n' >> "$report_file"
         printf '      <summary class="port-summary"><span class="port-title"><span class="port-chevron" aria-hidden="true">›</span><strong>%s</strong></span><span class="badge">%s</span></summary>\n' \
-          "$(html_escape_text "$key")" "$(html_escape_text "$proto")" >> "$report_file"
+          "$(html_escape_text "$display_label")" "$(html_escape_text "$proto")" >> "$report_file"
         printf '      <details class="artifact target-panel">\n' >> "$report_file"
         printf '      <summary>Hosts/IPs</summary>\n' >> "$report_file"
         printf '      <pre class="targets">' >> "$report_file"
