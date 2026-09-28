@@ -25,35 +25,46 @@ usage() {
 }
 
 print_banner() {
+  local CLR_DIM=""
+  local CLR_WHITE=""
+  local CLR_SKULL=""
+  local CLR_HANDLE=""
+
+  if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
+    CLR_DIM="$(printf '\033[2m')"
+    CLR_WHITE="$(printf '\033[97m')"
+    CLR_SKULL="$(printf '\033[97m')"
+    CLR_HANDLE="$(printf '\033[90m')"
+  fi
+
   banner_line() {
-    printf '%s|%s %-74s %s|%s\n' "$CLR_BLUE" "$CLR_RESET" "$1" "$CLR_BLUE" "$CLR_RESET"
+    printf '%s%s%s\n' "$1" "$2" "$CLR_RESET"
   }
 
   printf '\n'
-  printf '%s+----------------------------------------------------------------------------+%s\n' "$CLR_BLUE" "$CLR_RESET"
-  banner_line ""
-  banner_line "                               /\\           /\\"
-  banner_line "                              /  \\         /  \\"
-  banner_line "                             / /\\ \\       / /\\ \\"
-  banner_line "                            / /  \\ \\     / /  \\ \\"
-  banner_line "                           / /    \\ \\   / /    \\ \\"
-  banner_line "                          /_/      \\ \\_/ /      \\_\\"
-  banner_line "                         /          \\   /          \\"
-  banner_line "                        /   _________\\_/_________   \\"
-  banner_line "                       /___/       _     _       \\___\\"
-  banner_line "                                  / \\___/ \\"
-  banner_line "                                 |  x   x  |"
-  banner_line "                                 |    ^    |"
-  banner_line "                                  \\  ---  /"
-  banner_line "                                   \\_____/ "
-  banner_line "                                     |||"
-  banner_line "                                     |||"
-  banner_line "                                     |||"
-  banner_line "                                   __|||__"
-  banner_line ""
-  banner_line "                            Network VAPT Tool"
-  banner_line "                                by sp3ttr0"
-  banner_line ""
-  printf '%s+----------------------------------------------------------------------------+%s\n' "$CLR_BLUE" "$CLR_RESET"
+  banner_line "$CLR_DIM"    "                    . . . . . . . . . . . . . . . . . ."
+  banner_line "$CLR_RED"    "                               /\\           /\\"
+  banner_line "$CLR_RED"    "                              /  \\         /  \\"
+  banner_line "$CLR_RED"    "                             / /\\ \\       / /\\ \\"
+  banner_line "$CLR_RED"    "                            / /  \\ \\     / /  \\ \\"
+  banner_line "$CLR_RED"    "                           / /    \\ \\   / /    \\ \\"
+  banner_line "$CLR_RED"    "                          /_/      \\ \\_/ /      \\_\\"
+  banner_line "$CLR_RED"    "                         /          \\   /          \\"
+  banner_line "$CLR_RED"    "                        /   _________\\_/_________   \\"
+  banner_line "$CLR_RED"    "                       /___/       _     _       \\___\\"
+  banner_line "$CLR_SKULL"  "                                  / \\___/ \\"
+  banner_line "$CLR_SKULL"  "                                 |  x   x  |"
+  banner_line "$CLR_SKULL"  "                                 |    ^    |"
+  banner_line "$CLR_SKULL"  "                                  \\  ---  /"
+  banner_line "$CLR_SKULL"  "                                   \\_____/ "
+  banner_line "$CLR_HANDLE" "                                     |||"
+  banner_line "$CLR_HANDLE" "                                     |||"
+  banner_line "$CLR_HANDLE" "                                     |||"
+  banner_line "$CLR_HANDLE" "                                   __|||__"
+  banner_line "$CLR_DIM"    "                    . . . . . . . . . . . . . . . . . ."
+  printf '\n'
+  printf '                         %s%sNetwork VAPT Tool%s\n' "$CLR_BOLD" "$CLR_CYAN" "$CLR_RESET"
+  printf '                               %sby sp3ttr0%s\n' "$CLR_YELLOW" "$CLR_RESET"
+  printf '                    %srecon | proof | reporting%s\n' "$CLR_DIM" "$CLR_RESET"
   printf '\n'
 }
