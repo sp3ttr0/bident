@@ -1,6 +1,6 @@
 usage() {
   printf '%s\n' \
-    'Usage: sudo ./bident.sh (-f <scope-file> | -t <target>) [-o <results-dir>] [-p-] [--no-udp] [--responder] [-T1|-T2|-T3|-T4|-T5]' \
+    'Usage: sudo ./bident.sh (-f <scope-file> | -t <target> | --resume <results-dir>) [-o <results-dir>] [-p-] [--no-udp] [--responder] [-T1|-T2|-T3|-T4|-T5]' \
     '' \
     'Bident is a network VAPT helper that expands scope, discovers live hosts,' \
     'runs TCP/UDP port scans, launches targeted follow-up checks, and generates' \
@@ -9,6 +9,7 @@ usage() {
     'Target input:' \
     '  -f <scope-file>   Scope file to scan.' \
     '  -t <target>       Single IP/host to test.' \
+    '  --resume <dir>    Resume from an existing Bident results folder.' \
     '' \
     'Options:' \
     '  -o <results-dir>  Write all results into this folder.' \
@@ -21,7 +22,8 @@ usage() {
     '' \
     'Examples:' \
     '  sudo ./bident.sh -f scope.txt -p- -T4' \
-    '  sudo ./bident.sh -t 192.0.2.10 --no-udp -T4'
+    '  sudo ./bident.sh -t 192.0.2.10 --no-udp -T4' \
+    '  sudo ./bident.sh --resume bident_results_20260928_120000'
 }
 
 print_banner() {

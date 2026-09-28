@@ -1,6 +1,7 @@
 TARGETS_FILE="${TARGETS_FILE:-targets.txt}"
 LIVE_TARGETS_FILE="${LIVE_TARGETS_FILE:-targets_live.txt}"
 RESULTS_DIR="${RESULTS_DIR:-}"
+RESUME_DIR="${RESUME_DIR:-}"
 SCAN_DIR="${SCAN_DIR:-base_scans}"
 NSE_DIR="${NSE_DIR:-nmap_scripts}"
 TOOL_DIR="${TOOL_DIR:-tool_results}"

@@ -271,3 +271,91 @@ generate_open_port_reports() {
   printf '%sWrote Grouped Target Summary:%s %s\n' "$CLR_GREEN" "$CLR_RESET" "$report_txt"
   printf '%sWrote Per-Port Target Lists Under:%s %s/\n' "$CLR_GREEN" "$CLR_RESET" "$report_dir"
 }
+
+json_escape_text() {
+  printf '%s' "$1" | awk '
+    {
+      gsub(/\\/, "\\\\")
+      gsub(/"/, "\\\"")
+      gsub(/\t/, "\\t")
+      gsub(/\r/, "\\r")
+      gsub(/\n/, "\\n")
+      printf "%s", $0
+    }
+  '
+}
+
+generate_json_summary() {
+  local summary_file="summary.json"
+  local open_tsv="targets_with_open_ports/open_ports_all.tsv"
+  local services_tsv="targets_with_open_ports/services.tsv"
+  local scope_count=0
+  local live_count=0
+  local open_rows=0
+  local service_rows=0
+  local generated_at
+  local first=true
+  local target
+  local proto
+  local port
+  local name
+  local info
+  local target_port
+
+  [[ -f "$TARGETS_FILE" ]] && scope_count="$(wc -l < "$TARGETS_FILE" | tr -d '[:space:]')"
+  [[ -f "$LIVE_TARGETS_FILE" ]] && live_count="$(wc -l < "$LIVE_TARGETS_FILE" | tr -d '[:space:]')"
+  [[ -f "$open_tsv" ]] && open_rows="$(awk 'NR > 1 {count++} END {print count + 0}' "$open_tsv")"
+  [[ -f "$services_tsv" ]] && service_rows="$(awk 'NR > 1 {count++} END {print count + 0}' "$services_tsv")"
+  generated_at="$(date '+%Y-%m-%dT%H:%M:%S%z')"
+
+  {
+    printf '{\n'
+    printf '  "generated_at": "%s",\n' "$(json_escape_text "$generated_at")"
+    printf '  "counts": {\n'
+    printf '    "scoped_hosts": %s,\n' "$scope_count"
+    printf '    "live_hosts": %s,\n' "$live_count"
+    printf '    "open_target_port_rows": %s,\n' "$open_rows"
+    printf '    "services": %s\n' "$service_rows"
+    printf '  },\n'
+    printf '  "files": {\n'
+    printf '    "html_report": "report.html",\n'
+    printf '    "targets": "%s",\n' "$(json_escape_text "$TARGETS_FILE")"
+    printf '    "live_targets": "%s",\n' "$(json_escape_text "$LIVE_TARGETS_FILE")"
+    printf '    "open_ports": "%s",\n' "$(json_escape_text "$open_tsv")"
+    printf '    "services": "%s"\n' "$(json_escape_text "$services_tsv")"
+    printf '  },\n'
+    printf '  "open_ports": [\n'
+    first=true
+    if [[ -s "$open_tsv" ]]; then
+      while IFS=$'\t' read -r target proto port; do
+        [[ -n "${target:-}" ]] || continue
+        if [[ "$first" == true ]]; then
+          first=false
+        else
+          printf ',\n'
+        fi
+        printf '    {"host": "%s", "protocol": "%s", "port": %s, "host_port": "%s:%s"}' \
+          "$(json_escape_text "$target")" "$(json_escape_text "$proto")" "$port" "$(json_escape_text "$target")" "$(json_escape_text "$port")"
+      done < <(awk -F '\t' 'NR > 1' "$open_tsv")
+    fi
+    printf '\n  ],\n'
+    printf '  "services": [\n'
+    first=true
+    if [[ -s "$services_tsv" ]]; then
+      while IFS=$'\034' read -r target proto port name info target_port; do
+        [[ -n "${target:-}" ]] || continue
+        if [[ "$first" == true ]]; then
+          first=false
+        else
+          printf ',\n'
+        fi
+        printf '    {"host": "%s", "protocol": "%s", "port": %s, "name": "%s", "info": "%s", "host_port": "%s"}' \
+          "$(json_escape_text "$target")" "$(json_escape_text "$proto")" "$port" "$(json_escape_text "$name")" "$(json_escape_text "$info")" "$(json_escape_text "$target_port")"
+      done < <(awk -F '\t' 'NR > 1 {print $1 "\034" $2 "\034" $3 "\034" $4 "\034" $5 "\034" $6}' "$services_tsv")
+    fi
+    printf '\n  ]\n'
+    printf '}\n'
+  } > "$summary_file"
+
+  printf '%sWrote JSON Summary:%s %s\n' "$CLR_GREEN" "$CLR_RESET" "$summary_file"
+}

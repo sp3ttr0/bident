@@ -16,6 +16,12 @@ main() {
         SINGLE_TARGET="$2"
         shift 2
         ;;
+      --resume)
+        [[ -n "${2:-}" ]] || die "--resume requires a results directory"
+        RESUME_DIR="$2"
+        RESULTS_DIR="$2"
+        shift 2
+        ;;
       -p-)
         PORT_FLAG="-p-"
         shift
@@ -82,8 +88,12 @@ main() {
     esac
   done
   
-  if [[ -z "$SCOPE_FILE" && -z "$SINGLE_TARGET" ]]; then
+  if [[ -z "$SCOPE_FILE" && -z "$SINGLE_TARGET" && -z "$RESUME_DIR" ]]; then
     die "Missing target input: use -f <scope-file> or -t <target>"
+  fi
+  
+  if [[ -n "$RESUME_DIR" && ( -n "$SCOPE_FILE" || -n "$SINGLE_TARGET" ) ]]; then
+    die "Use --resume by itself, not with -f or -t"
   fi
   
   if [[ -n "$SCOPE_FILE" && -n "$SINGLE_TARGET" ]]; then
@@ -125,7 +135,9 @@ main() {
   require_root
   trap confirm_cancel INT
   
-  if [[ -n "$SCOPE_FILE" ]]; then
+  if [[ -n "$RESUME_DIR" ]]; then
+    [[ -d "$RESUME_DIR" ]] || die "Resume folder not found: $RESUME_DIR"
+  elif [[ -n "$SCOPE_FILE" ]]; then
     [[ -f "$SCOPE_FILE" ]] || die "Scope file not found: $SCOPE_FILE"
     [[ -s "$SCOPE_FILE" ]] || die "Scope file is empty: $SCOPE_FILE"
   fi
@@ -134,10 +146,16 @@ main() {
     RESULTS_DIR="bident_results_$(date '+%Y%m%d_%H%M%S')"
   fi
   
-  mkdir -p "$RESULTS_DIR"
-  printf '%sResults Folder:%s %s\n' "$CLR_CYAN" "$CLR_RESET" "$RESULTS_DIR"
+  if [[ -n "$RESUME_DIR" ]]; then
+    printf '%sResume Folder:%s %s\n' "$CLR_CYAN" "$CLR_RESET" "$RESULTS_DIR"
+  else
+    mkdir -p "$RESULTS_DIR"
+    printf '%sResults Folder:%s %s\n' "$CLR_CYAN" "$CLR_RESET" "$RESULTS_DIR"
+  fi
   
-  if [[ -n "$SCOPE_FILE" ]]; then
+  if [[ -n "$RESUME_DIR" ]]; then
+    :
+  elif [[ -n "$SCOPE_FILE" ]]; then
     ORIGINAL_SCOPE_FILE="$SCOPE_FILE"
     SCOPE_BASENAME="${SCOPE_FILE##*/}"
     cp "$ORIGINAL_SCOPE_FILE" "${RESULTS_DIR}/${SCOPE_BASENAME}"
@@ -149,7 +167,9 @@ main() {
   fi
   
   cd "$RESULTS_DIR"
-  SCOPE_FILE="$SCOPE_BASENAME"
+  if [[ -z "$RESUME_DIR" ]]; then
+    SCOPE_FILE="$SCOPE_BASENAME"
+  fi
   mkdir -p "$SCAN_DIR" "$NSE_DIR" "$TOOL_DIR" "$LOG_DIR"
   
   if [[ "$RUN_RESPONDER" == true ]]; then
@@ -157,11 +177,16 @@ main() {
     start_responder
   fi
   
-  printf '%sExpanding Scope From:%s %s\n' "$CLR_CYAN" "$CLR_RESET" "$SCOPE_FILE"
-  nmap -sL -n "-${TIMING}" -iL "$SCOPE_FILE" \
-    | awk '/Nmap scan report for/ {print $NF}' \
-    | sort -u \
-    > "$TARGETS_FILE"
+  if [[ -n "$RESUME_DIR" && -s "$TARGETS_FILE" ]]; then
+    printf '%sResuming With Scoped Targets File:%s %s\n' "$CLR_CYAN" "$CLR_RESET" "$TARGETS_FILE"
+  else
+    [[ -n "$SCOPE_FILE" ]] || die "Cannot resume discovery; ${TARGETS_FILE} is missing"
+    printf '%sExpanding Scope From:%s %s\n' "$CLR_CYAN" "$CLR_RESET" "$SCOPE_FILE"
+    nmap -sL -n "-${TIMING}" -iL "$SCOPE_FILE" \
+      | awk '/Nmap scan report for/ {print $NF}' \
+      | sort -u \
+      > "$TARGETS_FILE"
+  fi
   
   if [[ ! -s "$TARGETS_FILE" ]]; then
     die "No scoped targets found; ${TARGETS_FILE} was not created with any hosts"
@@ -171,18 +196,22 @@ main() {
   printf '\n%sTotal Hosts/IPs To Scan:%s %s\n' "$CLR_GREEN" "$CLR_RESET" "$target_count"
   printf '%sScoped Targets File:%s %s\n' "$CLR_CYAN" "$CLR_RESET" "$TARGETS_FILE"
   
-  printf '%sDiscovering Live Hosts From:%s %s\n' "$CLR_CYAN" "$CLR_RESET" "$TARGETS_FILE"
-  : > "$LIVE_TARGETS_FILE"
-  nmap -sn -n --reason "-${TIMING}" -iL "$TARGETS_FILE" 2>&1 \
-    | awk '
-        /Nmap scan report for/ {
-          ip = $NF
-        }
-        /Host is up/ {
-          print ip >> live_targets_file
-          fflush(live_targets_file)
-        }
-      ' live_targets_file="$LIVE_TARGETS_FILE"
+  if [[ -n "$RESUME_DIR" && -s "$LIVE_TARGETS_FILE" ]]; then
+    printf '%sResuming With Live Hosts/IPs File:%s %s\n' "$CLR_CYAN" "$CLR_RESET" "$LIVE_TARGETS_FILE"
+  else
+    printf '%sDiscovering Live Hosts From:%s %s\n' "$CLR_CYAN" "$CLR_RESET" "$TARGETS_FILE"
+    : > "$LIVE_TARGETS_FILE"
+    nmap -sn -n --reason "-${TIMING}" -iL "$TARGETS_FILE" 2>&1 \
+      | awk '
+          /Nmap scan report for/ {
+            ip = $NF
+          }
+          /Host is up/ {
+            print ip >> live_targets_file
+            fflush(live_targets_file)
+          }
+        ' live_targets_file="$LIVE_TARGETS_FILE"
+  fi
   
   if [[ ! -s "$LIVE_TARGETS_FILE" ]]; then
     printf '\n%sNo Live Hosts/IPs Was Found.%s\n' "$CLR_YELLOW" "$CLR_RESET"
@@ -214,37 +243,52 @@ main() {
     BASE_SCAN_SESSIONS+=(udp)
     BASE_SCAN_OUTPUTS+=("${SCAN_DIR}/udp.gnmap")
   fi
+
+  START_SCAN_SESSIONS=()
+  for scan_index in "${!BASE_SCAN_SESSIONS[@]}"; do
+    if [[ -s "${BASE_SCAN_OUTPUTS[$scan_index]}" ]]; then
+      printf '%sReusing Base Scan Output:%s %s\n' "$CLR_GREEN" "$CLR_RESET" "${BASE_SCAN_OUTPUTS[$scan_index]}"
+    else
+      START_SCAN_SESSIONS+=("${BASE_SCAN_SESSIONS[$scan_index]}")
+    fi
+  done
   
-  ensure_screen_sessions_available "${BASE_SCAN_SESSIONS[@]}"
-  
-  start_screen_scan "syn" \
-    "nmap -sV -sS -v --reason ${PORT_FLAG} --min-rate ${MIN_RATE} -${TIMING} -oA ${SCAN_DIR}/syn -iL ${LIVE_TARGETS_FILE} --open"
-  
-  start_screen_scan "con" \
-    "nmap -sV -sT -v --reason ${PORT_FLAG} --min-rate ${MIN_RATE} -${TIMING} -oA ${SCAN_DIR}/con -iL ${LIVE_TARGETS_FILE} --open"
-  
-  if [[ "$NO_UDP" != true ]]; then
-    start_screen_scan "udp" \
-      "nmap -n -sUV --version-intensity 1 -v --reason --max-rtt-timeout=100ms --max-retries=0 --min-rate ${MIN_RATE} -${TIMING} ${PORT_FLAG} -oA ${SCAN_DIR}/udp -iL ${LIVE_TARGETS_FILE} --open"
-  fi
-  
-  printf '\n%sBase Scan Sessions Were Launched.%s\n' "$CLR_GREEN" "$CLR_RESET"
-  printf '\n%sUseful Monitor Commands:%s\n' "$CLR_CYAN" "$CLR_RESET"
-  printf '  sudo screen -ls\n'
-  printf '  sudo screen -r syn\n'
-  printf '  sudo screen -r con\n'
-  if [[ "$NO_UDP" != true ]]; then
-    printf '  sudo screen -r udp\n'
-    printf '\n%sScreen Logs:%s %s/syn.screen.log, %s/con.screen.log, %s/udp.screen.log\n' "$CLR_CYAN" "$CLR_RESET" "$LOG_DIR" "$LOG_DIR" "$LOG_DIR"
+  if [[ "${#START_SCAN_SESSIONS[@]}" -gt 0 ]]; then
+    ensure_screen_sessions_available "${START_SCAN_SESSIONS[@]}"
+    
+    for session_name in "${START_SCAN_SESSIONS[@]}"; do
+      case "$session_name" in
+        syn)
+          start_screen_scan "syn" \
+            "nmap -sV -sS -v --reason ${PORT_FLAG} --min-rate ${MIN_RATE} -${TIMING} -oA ${SCAN_DIR}/syn -iL ${LIVE_TARGETS_FILE} --open"
+          ;;
+        con)
+          start_screen_scan "con" \
+            "nmap -sV -sT -v --reason ${PORT_FLAG} --min-rate ${MIN_RATE} -${TIMING} -oA ${SCAN_DIR}/con -iL ${LIVE_TARGETS_FILE} --open"
+          ;;
+        udp)
+          start_screen_scan "udp" \
+            "nmap -n -sUV --version-intensity 1 -v --reason --max-rtt-timeout=100ms --max-retries=0 --min-rate ${MIN_RATE} -${TIMING} ${PORT_FLAG} -oA ${SCAN_DIR}/udp -iL ${LIVE_TARGETS_FILE} --open"
+          ;;
+      esac
+    done
+    
+    printf '\n%sBase Scan Sessions Were Launched.%s\n' "$CLR_GREEN" "$CLR_RESET"
+    printf '\n%sUseful Monitor Commands:%s\n' "$CLR_CYAN" "$CLR_RESET"
+    printf '  sudo screen -ls\n'
+    for session_name in "${START_SCAN_SESSIONS[@]}"; do
+      printf '  sudo screen -r %s\n' "$session_name"
+    done
+    printf '\n%sScreen Logs:%s %s/*.screen.log\n' "$CLR_CYAN" "$CLR_RESET" "$LOG_DIR"
+    if [[ "$RUN_RESPONDER" == true ]]; then
+      printf '  sudo screen -r responder\n'
+    fi
+    printf '\n%sDetach From A Screen Session With:%s Ctrl-a Then d\n' "$CLR_CYAN" "$CLR_RESET"
+    
+    wait_for_screen_scans "${START_SCAN_SESSIONS[@]}"
   else
-    printf '\n%sScreen Logs:%s %s/syn.screen.log, %s/con.screen.log\n' "$CLR_CYAN" "$CLR_RESET" "$LOG_DIR" "$LOG_DIR"
+    printf '\n%sAll Base Scan Outputs Found:%s Skipping Base Scan Stage.\n' "$CLR_GREEN" "$CLR_RESET"
   fi
-  if [[ "$RUN_RESPONDER" == true ]]; then
-    printf '  sudo screen -r responder\n'
-  fi
-  printf '\n%sDetach From A Screen Session With:%s Ctrl-a Then d\n' "$CLR_CYAN" "$CLR_RESET"
-  
-  wait_for_screen_scans "${BASE_SCAN_SESSIONS[@]}"
   
   for base_output in "${BASE_SCAN_OUTPUTS[@]}"; do
     [[ -f "$base_output" ]] || die "Expected base scan output not found: $base_output"
@@ -362,6 +406,7 @@ main() {
     nmap -n -sV "-${TIMING}" --script 'vnc-*' -p 5800,5801,5900,5901 -oN ${NSE_DIR}/s_vnc.txt -iL "$LIVE_TARGETS_FILE" --open
   
   generate_html_report
+  generate_json_summary
   
   printf '\n%sConditional NSE Stage Finished.%s\n' "$CLR_GREEN" "$CLR_RESET"
   printf '%sScan Completed.%s\n' "$CLR_GREEN" "$CLR_RESET"

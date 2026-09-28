@@ -25,7 +25,6 @@ Optional tools used when matching ports are found:
 netexec ssh-audit impacket-rpcdump rpcclient ldapsearch dig testssl sslscan ike-scan responder
 ```
 
-
 ## Installation
 
 Clone the repository and make the script executable:
@@ -45,11 +44,10 @@ sudo apt install -y nmap screen dnsutils ldap-utils smbclient
 
 Install optional tools as needed for deeper checks.
 
-
 ## Usage
 
 ```bash
-sudo ./bident.sh (-f <scope-file> | -t <target>) [-o <results-dir>] [options] ...
+sudo ./bident.sh (-f <scope-file> | -t <target> | --resume <results-dir>) [-o <results-dir>] [options] ...
 ```
 
 ### Target Input
@@ -57,6 +55,7 @@ sudo ./bident.sh (-f <scope-file> | -t <target>) [-o <results-dir>] [options] ..
 ```bash
 -f <scope-file>   Scope file to scan.
 -t <target>       Single IP or host to test.
+--resume <dir>    Resume from an existing Bident results folder.
 ```
 
 ### Options
@@ -97,6 +96,23 @@ Write results to a custom folder:
 sudo ./bident.sh -f scope.txt -o client_scan_results -p-
 ```
 
+Resume from an existing results folder:
+
+```bash
+sudo ./bident.sh --resume bident_results_20260928_120000
+```
+
+## Output Layout
+
+```text
+base_scans/              SYN, connect, and UDP Nmap base scan outputs.
+nmap_scripts/            Targeted Nmap NSE result files.
+tool_results/            External tool outputs.
+logs/                    Detached screen session logs.
+targets_with_open_ports/ Open-port target lists and service tables.
+report.html              Searchable HTML report.
+summary.json             Machine-readable JSON summary.
+```
 
 ## Disclaimer
 
