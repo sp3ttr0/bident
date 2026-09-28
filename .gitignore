@@ -1,0 +1,25 @@
+.DS_Store
+
+# Bident run outputs
+bident_results_*/
+base_scans/
+nmap_scripts/
+tool_results/
+logs/
+targets_with_open_ports/
+report.html
+
+# Scope and target files can contain sensitive client/internal data.
+scope.txt
+targets.txt
+targets_live.txt
+single_target_scope.txt
+
+# Nmap output formats, if generated at the repository root.
+*.gnmap
+*.nmap
+*.xml
+*.screen.log
+
+# Temporary local checks
+.bident_*_check/
