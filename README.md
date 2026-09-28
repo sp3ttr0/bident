@@ -22,7 +22,7 @@ nmap screen awk sort grep tee sudo
 Optional tools used when matching ports are found:
 
 ```bash
-netexec ssh-audit impacket-rpcdump rpcclient ldapsearch dig testssl sslscan ike-scan responder
+netexec ssh-audit impacket-rpcdump rpcclient ldapsearch dig testssl sslscan ike-scan responder msfconsole
 ```
 
 ## Installation
@@ -108,6 +108,7 @@ sudo ./bident.sh --resume bident_results_20260928_120000
 base_scans/              SYN, connect, and UDP Nmap base scan outputs.
 nmap_scripts/            Targeted Nmap NSE result files.
 tool_results/            External tool outputs.
+metasploit/              Metasploit auxiliary resource file and results.
 logs/                    Detached screen session logs.
 targets_with_open_ports/ Open-port target lists and service tables.
 report.html              Searchable HTML report.

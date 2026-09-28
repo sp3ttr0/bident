@@ -404,6 +404,8 @@ main() {
   
   run_if_open "VNC NSE" tcp "5800,5801,5900,5901" \
     nmap -n -sV "-${TIMING}" --script 'vnc-*' -p 5800,5801,5900,5901 -oN ${NSE_DIR}/s_vnc.txt -iL "$LIVE_TARGETS_FILE" --open
+
+  run_msf_auxiliary_checks
   
   generate_html_report
   generate_json_summary

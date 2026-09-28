@@ -9,6 +9,7 @@ source "${SCRIPT_DIR}/lib/utils.sh"
 source "${SCRIPT_DIR}/lib/screens.sh"
 source "${SCRIPT_DIR}/lib/ports.sh"
 source "${SCRIPT_DIR}/lib/checks.sh"
+source "${SCRIPT_DIR}/lib/metasploit.sh"
 source "${SCRIPT_DIR}/lib/report.sh"
 source "${SCRIPT_DIR}/lib/workflow.sh"
 

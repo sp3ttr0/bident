@@ -22,6 +22,14 @@ html_escape_text() {
 
 default_result_label() {
   local result_name="${1##*/}"
+  local msf_name
+
+  if [[ "$result_name" =~ ^[A-Za-z0-9_]+_(tcp|udp)_[0-9]+\.txt$ ]]; then
+    msf_name="${result_name%.txt}"
+    msf_name="$(printf '%s' "$msf_name" | sed -E 's/_(tcp|udp)_[0-9]+$//; s/_/ /g')"
+    printf '%s Metasploit Results' "$(printf '%s' "$msf_name" | awk '{for (i=1;i<=NF;i++) {$i=toupper(substr($i,1,1)) substr($i,2)} print}')"
+    return
+  fi
 
   case "$result_name" in
     s_ftp.txt) printf 'FTP NMAP Results' ;;
@@ -109,6 +117,18 @@ append_ssl_external_result_files() {
 
   append_result_file_section "$outfile" testssl_results.txt
   append_result_file_section "$outfile" sslscan_results.txt
+}
+
+append_msf_result_files() {
+  local outfile="$1"
+  local proto="$2"
+  local port="$3"
+  local result_file
+
+  for result_file in "${MSF_RESULT_DIR}/"*"_${proto}_${port}.txt"; do
+    [[ -s "$result_file" ]] || continue
+    append_result_file_section "$outfile" "$result_file"
+  done
 }
 
 normalize_service_name() {
@@ -286,6 +306,8 @@ append_port_result_files() {
     udp/5060) append_result_file_section "$outfile" s_sip.txt ;;
     tcp/5800|tcp/5801|tcp/5900|tcp/5901) append_result_file_section "$outfile" s_vnc.txt ;;
   esac
+
+  append_msf_result_files "$outfile" "$proto" "$port"
 }
 
 generate_html_report() {
@@ -820,7 +842,7 @@ HTML
     printf '  <details class="artifact core-artifacts">\n'
     printf '    <summary>Core Artifacts</summary>\n'
     printf '    <div class="file-list">'
-    for artifact in "$TARGETS_FILE" "$LIVE_TARGETS_FILE" "${SCAN_DIR}/syn.nmap" "${SCAN_DIR}/con.nmap" "${SCAN_DIR}/udp.nmap" "${SCAN_DIR}/syn.gnmap" "${SCAN_DIR}/con.gnmap" "${SCAN_DIR}/udp.gnmap" "${SCAN_DIR}/syn.xml" "${SCAN_DIR}/con.xml" "${SCAN_DIR}/udp.xml" targets_with_open_ports/services.tsv targets_with_open_ports/open_ports_all.tsv targets_with_open_ports/open_ports_mentioned.tsv targets_with_open_ports/open_ports_by_target.txt; do
+    for artifact in "$TARGETS_FILE" "$LIVE_TARGETS_FILE" "${SCAN_DIR}/syn.nmap" "${SCAN_DIR}/con.nmap" "${SCAN_DIR}/udp.nmap" "${SCAN_DIR}/syn.gnmap" "${SCAN_DIR}/con.gnmap" "${SCAN_DIR}/udp.gnmap" "${SCAN_DIR}/syn.xml" "${SCAN_DIR}/con.xml" "${SCAN_DIR}/udp.xml" targets_with_open_ports/services.tsv targets_with_open_ports/open_ports_all.tsv targets_with_open_ports/open_ports_mentioned.tsv targets_with_open_ports/open_ports_by_target.txt "${MSF_DIR}/metasploit_auxiliary.rc" "${MSF_DIR}/msfconsole.log"; do
       if [[ -f "$artifact" ]]; then
         printf '<a href="%s">%s</a>\n' "$(html_escape_text "$artifact")" "$(html_escape_text "$artifact")"
       fi
