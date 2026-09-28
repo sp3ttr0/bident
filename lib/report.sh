@@ -21,7 +21,9 @@ html_escape_text() {
 }
 
 default_result_label() {
-  case "$1" in
+  local result_name="${1##*/}"
+
+  case "$result_name" in
     s_ftp.txt) printf 'FTP NMAP Results' ;;
     s_ssh.txt) printf 'SSH NMAP Results' ;;
     s_telnet.txt) printf 'Telnet NMAP Results' ;;
@@ -52,30 +54,51 @@ default_result_label() {
     dns_recursion_enabled.txt) printf 'DNS Recursion Enabled' ;;
     db_mssql.txt) printf 'MSSQL NMAP Results' ;;
     db_mysql.txt) printf 'MySQL NMAP Results' ;;
-    *) printf '%s' "$1" ;;
+    *) printf '%s' "$result_name" ;;
   esac
+}
+
+resolve_result_file() {
+  local result_file="$1"
+
+  if [[ -s "$result_file" ]]; then
+    printf '%s' "$result_file"
+    return 0
+  fi
+
+  for result_file in "${NSE_DIR}/${result_file}" "${TOOL_DIR}/${result_file}" "${SCAN_DIR}/${result_file}" "${LOG_DIR}/${result_file}"; do
+    if [[ -s "$result_file" ]]; then
+      printf '%s' "$result_file"
+      return 0
+    fi
+  done
+
+  return 1
 }
 
 append_result_file_section() {
   local outfile="$1"
   local result_file="$2"
   local result_label="${3:-}"
+  local resolved_file
+  local result_name
 
   if [[ -z "$result_label" ]]; then
     result_label="$(default_result_label "$result_file")"
   fi
 
-  [[ -s "$result_file" ]] || return 0
+  resolved_file="$(resolve_result_file "$result_file")" || return 0
+  result_name="${resolved_file##*/}"
 
   {
     printf '<details class="artifact result-panel">\n'
-    if [[ "$result_label" == "$result_file" ]]; then
-      printf '<summary>%s</summary>\n' "$(html_escape_text "$result_file")"
+    if [[ "$result_label" == "$result_name" ]]; then
+      printf '<summary>%s</summary>\n' "$(html_escape_text "$resolved_file")"
     else
-      printf '<summary>%s <span class="artifact-file">%s</span></summary>\n' "$(html_escape_text "$result_label")" "$(html_escape_text "$result_file")"
+      printf '<summary>%s <span class="artifact-file">%s</span></summary>\n' "$(html_escape_text "$result_label")" "$(html_escape_text "$resolved_file")"
     fi
     printf '<pre>'
-    html_escape_file "$result_file"
+    html_escape_file "$resolved_file"
     printf '</pre>\n'
     printf '</details>\n'
   } >> "$outfile"
@@ -705,7 +728,7 @@ HTML
     printf '  <details class="artifact core-artifacts">\n'
     printf '    <summary>Core Artifacts</summary>\n'
     printf '    <div class="file-list">'
-    for artifact in "$TARGETS_FILE" "$LIVE_TARGETS_FILE" syn.nmap con.nmap udp.nmap syn.gnmap con.gnmap udp.gnmap targets_with_open_ports/services.tsv targets_with_open_ports/open_ports_all.tsv targets_with_open_ports/open_ports_mentioned.tsv targets_with_open_ports/open_ports_by_target.txt; do
+    for artifact in "$TARGETS_FILE" "$LIVE_TARGETS_FILE" "${SCAN_DIR}/syn.nmap" "${SCAN_DIR}/con.nmap" "${SCAN_DIR}/udp.nmap" "${SCAN_DIR}/syn.gnmap" "${SCAN_DIR}/con.gnmap" "${SCAN_DIR}/udp.gnmap" "${SCAN_DIR}/syn.xml" "${SCAN_DIR}/con.xml" "${SCAN_DIR}/udp.xml" targets_with_open_ports/services.tsv targets_with_open_ports/open_ports_all.tsv targets_with_open_ports/open_ports_mentioned.tsv targets_with_open_ports/open_ports_by_target.txt; do
       if [[ -f "$artifact" ]]; then
         printf '<a href="%s">%s</a>\n' "$(html_escape_text "$artifact")" "$(html_escape_text "$artifact")"
       fi

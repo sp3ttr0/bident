@@ -40,9 +40,10 @@ start_screen_scan() {
   local session_name="$1"
   local command_text="$2"
 
-  screen -L -Logfile "${session_name}.screen.log" -dmS "$session_name" bash -lc "$command_text"
+  mkdir -p "$LOG_DIR"
+  screen -L -Logfile "${LOG_DIR}/${session_name}.screen.log" -dmS "$session_name" bash -lc "$command_text"
   printf '%sStarted Screen Session:%s %s\n' "$CLR_GREEN" "$CLR_RESET" "$session_name"
-  printf '%sScreen Log File:%s %s.screen.log\n' "$CLR_CYAN" "$CLR_RESET" "$session_name"
+  printf '%sScreen Log File:%s %s/%s.screen.log\n' "$CLR_CYAN" "$CLR_RESET" "$LOG_DIR" "$session_name"
 }
 
 start_responder() {

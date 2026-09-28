@@ -150,6 +150,7 @@ main() {
   
   cd "$RESULTS_DIR"
   SCOPE_FILE="$SCOPE_BASENAME"
+  mkdir -p "$SCAN_DIR" "$NSE_DIR" "$TOOL_DIR" "$LOG_DIR"
   
   if [[ "$RUN_RESPONDER" == true ]]; then
     ensure_screen_sessions_available responder
@@ -208,23 +209,23 @@ main() {
   fi
   
   BASE_SCAN_SESSIONS=(syn con)
-  BASE_SCAN_OUTPUTS=(syn.gnmap con.gnmap)
+  BASE_SCAN_OUTPUTS=("${SCAN_DIR}/syn.gnmap" "${SCAN_DIR}/con.gnmap")
   if [[ "$NO_UDP" != true ]]; then
     BASE_SCAN_SESSIONS+=(udp)
-    BASE_SCAN_OUTPUTS+=(udp.gnmap)
+    BASE_SCAN_OUTPUTS+=("${SCAN_DIR}/udp.gnmap")
   fi
   
   ensure_screen_sessions_available "${BASE_SCAN_SESSIONS[@]}"
   
   start_screen_scan "syn" \
-    "nmap -sV -sS -v --reason ${PORT_FLAG} --min-rate ${MIN_RATE} -${TIMING} -oA syn -iL ${LIVE_TARGETS_FILE} --open"
+    "nmap -sV -sS -v --reason ${PORT_FLAG} --min-rate ${MIN_RATE} -${TIMING} -oA ${SCAN_DIR}/syn -iL ${LIVE_TARGETS_FILE} --open"
   
   start_screen_scan "con" \
-    "nmap -sV -sT -v --reason ${PORT_FLAG} --min-rate ${MIN_RATE} -${TIMING} -oA con -iL ${LIVE_TARGETS_FILE} --open"
+    "nmap -sV -sT -v --reason ${PORT_FLAG} --min-rate ${MIN_RATE} -${TIMING} -oA ${SCAN_DIR}/con -iL ${LIVE_TARGETS_FILE} --open"
   
   if [[ "$NO_UDP" != true ]]; then
     start_screen_scan "udp" \
-      "nmap -n -sUV --version-intensity 1 -v --reason --max-rtt-timeout=100ms --max-retries=0 --min-rate ${MIN_RATE} -${TIMING} ${PORT_FLAG} -oA udp -iL ${LIVE_TARGETS_FILE} --open"
+      "nmap -n -sUV --version-intensity 1 -v --reason --max-rtt-timeout=100ms --max-retries=0 --min-rate ${MIN_RATE} -${TIMING} ${PORT_FLAG} -oA ${SCAN_DIR}/udp -iL ${LIVE_TARGETS_FILE} --open"
   fi
   
   printf '\n%sBase Scan Sessions Were Launched.%s\n' "$CLR_GREEN" "$CLR_RESET"
@@ -234,9 +235,9 @@ main() {
   printf '  sudo screen -r con\n'
   if [[ "$NO_UDP" != true ]]; then
     printf '  sudo screen -r udp\n'
-    printf '\n%sScreen Logs:%s syn.screen.log, con.screen.log, udp.screen.log\n' "$CLR_CYAN" "$CLR_RESET"
+    printf '\n%sScreen Logs:%s %s/syn.screen.log, %s/con.screen.log, %s/udp.screen.log\n' "$CLR_CYAN" "$CLR_RESET" "$LOG_DIR" "$LOG_DIR" "$LOG_DIR"
   else
-    printf '\n%sScreen Logs:%s syn.screen.log, con.screen.log\n' "$CLR_CYAN" "$CLR_RESET"
+    printf '\n%sScreen Logs:%s %s/syn.screen.log, %s/con.screen.log\n' "$CLR_CYAN" "$CLR_RESET" "$LOG_DIR" "$LOG_DIR"
   fi
   if [[ "$RUN_RESPONDER" == true ]]; then
     printf '  sudo screen -r responder\n'
@@ -254,111 +255,111 @@ main() {
   printf '\n%sBase Scans Finished:%s Starting Conditional NSE Stage...\n' "$CLR_GREEN" "$CLR_RESET"
   
   run_if_open "FTP NSE" tcp "21" \
-    nmap -n -sV "-${TIMING}" --script 'ftp-*' -p 21 -oN s_ftp.txt -iL "$LIVE_TARGETS_FILE" --open
+    nmap -n -sV "-${TIMING}" --script 'ftp-*' -p 21 -oN ${NSE_DIR}/s_ftp.txt -iL "$LIVE_TARGETS_FILE" --open
   
   run_if_open "SSH NSE" tcp "22" \
-    nmap -n -sV "-${TIMING}" --script 'ssh*' -p 22 -oN s_ssh.txt -iL "$LIVE_TARGETS_FILE" --open
+    nmap -n -sV "-${TIMING}" --script 'ssh*' -p 22 -oN ${NSE_DIR}/s_ssh.txt -iL "$LIVE_TARGETS_FILE" --open
   
   run_ssh_audit_check
   
   run_if_open "Telnet NSE" tcp "23" \
-    nmap -n -sV "-${TIMING}" --script '*telnet*' -p 23 -oN s_telnet.txt -iL "$LIVE_TARGETS_FILE" --open
+    nmap -n -sV "-${TIMING}" --script '*telnet*' -p 23 -oN ${NSE_DIR}/s_telnet.txt -iL "$LIVE_TARGETS_FILE" --open
   
   run_if_open "SMTP NSE" tcp "25,465,587" \
-    nmap -n -sV "-${TIMING}" --script 'smtp-*' -p 25,465,587 -oN s_smtp.txt -iL "$LIVE_TARGETS_FILE" --open
+    nmap -n -sV "-${TIMING}" --script 'smtp-*' -p 25,465,587 -oN ${NSE_DIR}/s_smtp.txt -iL "$LIVE_TARGETS_FILE" --open
   
   if [[ "$NO_UDP" == true ]]; then
     run_if_open "DNS NSE" tcp "53" \
-      nmap -n -sS -sV "-${TIMING}" --script '(default and *dns*) or fcrdns or dns-srv-enum or dns-random-txid or dns-random-srcport' -p 53 -oN s_dns.txt -iL "$LIVE_TARGETS_FILE" --open
+      nmap -n -sS -sV "-${TIMING}" --script '(default and *dns*) or fcrdns or dns-srv-enum or dns-random-txid or dns-random-srcport' -p 53 -oN ${NSE_DIR}/s_dns.txt -iL "$LIVE_TARGETS_FILE" --open
   else
     run_if_open "DNS NSE" any "53" \
-      nmap -n -sS -sU -sV "-${TIMING}" --script '(default and *dns*) or fcrdns or dns-srv-enum or dns-random-txid or dns-random-srcport' -p 53 -oN s_dns.txt -iL "$LIVE_TARGETS_FILE" --open
+      nmap -n -sS -sU -sV "-${TIMING}" --script '(default and *dns*) or fcrdns or dns-srv-enum or dns-random-txid or dns-random-srcport' -p 53 -oN ${NSE_DIR}/s_dns.txt -iL "$LIVE_TARGETS_FILE" --open
   fi
   
   run_dns_dig_checks
   
   run_if_open "HTTP/HTTPS NSE" tcp "80,81,443,8000,8080,8443" \
-    nmap -n -sV "-${TIMING}" --script '(http* or ssl*) and not (dos or http-slowloris*)' -p 80,81,443,8000,8080,8443 -oN s_http.txt -iL "$LIVE_TARGETS_FILE" --open
+    nmap -n -sV "-${TIMING}" --script '(http* or ssl*) and not (dos or http-slowloris*)' -p 80,81,443,8000,8080,8443 -oN ${NSE_DIR}/s_http.txt -iL "$LIVE_TARGETS_FILE" --open
   
   run_if_open "AJP NSE" tcp "8009" \
-    nmap -n -sV "-${TIMING}" --script 'ajp-*' -p 8009 -oN s_ajp.txt -iL "$LIVE_TARGETS_FILE" --open
+    nmap -n -sV "-${TIMING}" --script 'ajp-*' -p 8009 -oN ${NSE_DIR}/s_ajp.txt -iL "$LIVE_TARGETS_FILE" --open
   
   run_if_open "SSL/TLS NSE" tcp "443,465,587,636,993,995,3269,3389,8443" \
-    nmap -n -sV "-${TIMING}" --script 'ssl-*' -oN ssl_tls_results.txt -iL "$LIVE_TARGETS_FILE" --open
+    nmap -n -sV "-${TIMING}" --script 'ssl-*' -oN ${NSE_DIR}/ssl_tls_results.txt -iL "$LIVE_TARGETS_FILE" --open
   
   run_ssl_external_checks
   
   run_if_open "Kerberos NSE" tcp "88" \
-    nmap -n -sV "-${TIMING}" --script krb5-enum-users -p 88 -oN s_kerberos.txt -iL "$LIVE_TARGETS_FILE" --open
+    nmap -n -sV "-${TIMING}" --script krb5-enum-users -p 88 -oN ${NSE_DIR}/s_kerberos.txt -iL "$LIVE_TARGETS_FILE" --open
   
   run_if_open "POP3 NSE" tcp "110,995" \
-    nmap -n -sV "-${TIMING}" --script 'pop3-capabilities or pop3-ntlm-info' -p 110,995 -oN s_pop3.txt -iL "$LIVE_TARGETS_FILE" --open
+    nmap -n -sV "-${TIMING}" --script 'pop3-capabilities or pop3-ntlm-info' -p 110,995 -oN ${NSE_DIR}/s_pop3.txt -iL "$LIVE_TARGETS_FILE" --open
   
   if [[ "$NO_UDP" == true ]]; then
     run_if_open "RPCBind NSE" tcp "111" \
-      nmap -n -sV -sS "-${TIMING}" -p 111 -oN s_rpcbind.txt -iL "$LIVE_TARGETS_FILE" --open
+      nmap -n -sV -sS "-${TIMING}" -p 111 -oN ${NSE_DIR}/s_rpcbind.txt -iL "$LIVE_TARGETS_FILE" --open
   else
     run_if_open "RPCBind NSE" any "111" \
-      nmap -n -sV -sSUC "-${TIMING}" -p 111 -oN s_rpcbind.txt -iL "$LIVE_TARGETS_FILE" --open
+      nmap -n -sV -sSUC "-${TIMING}" -p 111 -oN ${NSE_DIR}/s_rpcbind.txt -iL "$LIVE_TARGETS_FILE" --open
   fi
   
   run_rpc_135_checks
   
   if [[ "$NO_UDP" != true ]]; then
     run_if_open "NTP NSE" udp "123" \
-      nmap -n -sU -sV "-${TIMING}" --script 'ntp* and (discovery or vuln) and not (dos or brute)' -p 123 -oN s_ntp.txt -iL "$LIVE_TARGETS_FILE" --open
+      nmap -n -sU -sV "-${TIMING}" --script 'ntp* and (discovery or vuln) and not (dos or brute)' -p 123 -oN ${NSE_DIR}/s_ntp.txt -iL "$LIVE_TARGETS_FILE" --open
   
     run_if_open "NetBIOS NSE" udp "137" \
-      nmap -n -sU -sV "-${TIMING}" --script nbstat -p 137 -oN s_netbios.txt -iL "$LIVE_TARGETS_FILE" --open
+      nmap -n -sU -sV "-${TIMING}" --script nbstat -p 137 -oN ${NSE_DIR}/s_netbios.txt -iL "$LIVE_TARGETS_FILE" --open
   fi
   
   run_if_open "SMB NSE" tcp "139,445" \
-    nmap -n -sV "-${TIMING}" --script 'smb-vuln*,smb-enum*,smb-protocols,smb-security-mode,smb2-security-mode' -p 139,445 -oN s_smb.txt -iL "$LIVE_TARGETS_FILE" --open
+    nmap -n -sV "-${TIMING}" --script 'smb-vuln*,smb-enum*,smb-protocols,smb-security-mode,smb2-security-mode' -p 139,445 -oN ${NSE_DIR}/s_smb.txt -iL "$LIVE_TARGETS_FILE" --open
   
   run_smb_external_checks
   
   if [[ "$NO_UDP" != true ]]; then
     run_if_open "SNMP NSE" udp "161,162" \
-      nmap -n -sUV "-${TIMING}" --script 'snmp-*' -p 161,162 -oN s_snmp.txt -iL "$LIVE_TARGETS_FILE" --open
+      nmap -n -sUV "-${TIMING}" --script 'snmp-*' -p 161,162 -oN ${NSE_DIR}/s_snmp.txt -iL "$LIVE_TARGETS_FILE" --open
   fi
   
   run_if_open "LDAP NSE" tcp "389,636,3268,3269" \
-    nmap -n -sV "-${TIMING}" --script 'ldap* and not brute' -p 389,636,3268,3269 -oN s_ldap.txt -iL "$LIVE_TARGETS_FILE" --open
+    nmap -n -sV "-${TIMING}" --script 'ldap* and not brute' -p 389,636,3268,3269 -oN ${NSE_DIR}/s_ldap.txt -iL "$LIVE_TARGETS_FILE" --open
   
   run_ldapsearch_checks
   
   if [[ "$NO_UDP" != true ]]; then
     run_if_open "IKE scan" udp "500" \
-      nmap -n -sUV "-${TIMING}" -p 500 -oN s_ike.txt -iL "$LIVE_TARGETS_FILE" --open
+      nmap -n -sUV "-${TIMING}" -p 500 -oN ${NSE_DIR}/s_ike.txt -iL "$LIVE_TARGETS_FILE" --open
   
     run_ike_weak_encryption_check
   
     run_if_open "IPMI NSE" udp "623" \
-      nmap -n -sV "-${TIMING}" --script 'ipmi-*' -p 623 -oN s_ipmi.txt -iL "$LIVE_TARGETS_FILE" --open
+      nmap -n -sV "-${TIMING}" --script 'ipmi-*' -p 623 -oN ${NSE_DIR}/s_ipmi.txt -iL "$LIVE_TARGETS_FILE" --open
   fi
   
   run_if_open "MSSQL NSE" tcp "1433" \
-    nmap -n -sV "-${TIMING}" --script ms-sql-info,ms-sql-empty-password,ms-sql-brute,ms-sql-xp-cmdshell,ms-sql-config,ms-sql-ntlm-info,ms-sql-tables,ms-sql-hasdbaccess,ms-sql-dac,ms-sql-dump-hashes --script-args mssql.instance-port=1433,mssql.username=sa,mssql.password=,mssql.instance-name=MSSQLSERVER -p 1433 -oN db_mssql.txt -iL "$LIVE_TARGETS_FILE" --open
+    nmap -n -sV "-${TIMING}" --script ms-sql-info,ms-sql-empty-password,ms-sql-brute,ms-sql-xp-cmdshell,ms-sql-config,ms-sql-ntlm-info,ms-sql-tables,ms-sql-hasdbaccess,ms-sql-dac,ms-sql-dump-hashes --script-args mssql.instance-port=1433,mssql.username=sa,mssql.password=,mssql.instance-name=MSSQLSERVER -p 1433 -oN ${NSE_DIR}/db_mssql.txt -iL "$LIVE_TARGETS_FILE" --open
   
   run_if_open "Oracle NSE" tcp "1521" \
-    nmap -n -sV "-${TIMING}" --script oracle-tns-version,oracle-sid-brute -p 1521 -oN s_oracle.txt -iL "$LIVE_TARGETS_FILE"
+    nmap -n -sV "-${TIMING}" --script oracle-tns-version,oracle-sid-brute -p 1521 -oN ${NSE_DIR}/s_oracle.txt -iL "$LIVE_TARGETS_FILE"
   
   run_if_open "NFS NSE" tcp "2049" \
-    nmap -n -sV "-${TIMING}" --script nfs-ls,nfs-showmount,nfs-statfs -p 2049 -oN s_nfs.txt -iL "$LIVE_TARGETS_FILE" --open
+    nmap -n -sV "-${TIMING}" --script nfs-ls,nfs-showmount,nfs-statfs -p 2049 -oN ${NSE_DIR}/s_nfs.txt -iL "$LIVE_TARGETS_FILE" --open
   
   run_if_open "MySQL NSE" tcp "3306" \
-    nmap -n -sV "-${TIMING}" --script mysql-audit,mysql-databases,mysql-dump-hashes,mysql-empty-password,mysql-enum,mysql-info,mysql-query,mysql-users,mysql-variables,mysql-vuln-cve2012-2122 -p 3306 -oN db_mysql.txt -iL "$LIVE_TARGETS_FILE" --open
+    nmap -n -sV "-${TIMING}" --script mysql-audit,mysql-databases,mysql-dump-hashes,mysql-empty-password,mysql-enum,mysql-info,mysql-query,mysql-users,mysql-variables,mysql-vuln-cve2012-2122 -p 3306 -oN ${NSE_DIR}/db_mysql.txt -iL "$LIVE_TARGETS_FILE" --open
   
   run_if_open "RDP NSE" tcp "3389" \
-    nmap -n -sV "-${TIMING}" --script 'rdp-enum-encryption or rdp-vuln-ms12-020 or rdp-ntlm-info' -p 3389 -oN s_rdp.txt -iL "$LIVE_TARGETS_FILE" --open
+    nmap -n -sV "-${TIMING}" --script 'rdp-enum-encryption or rdp-vuln-ms12-020 or rdp-ntlm-info' -p 3389 -oN ${NSE_DIR}/s_rdp.txt -iL "$LIVE_TARGETS_FILE" --open
   
   if [[ "$NO_UDP" != true ]]; then
     run_if_open "SIP NSE" udp "5060" \
-      nmap -n -sU -sV "-${TIMING}" --script 'sip-*' -p 5060 -oN s_sip.txt -iL "$LIVE_TARGETS_FILE" --open
+      nmap -n -sU -sV "-${TIMING}" --script 'sip-*' -p 5060 -oN ${NSE_DIR}/s_sip.txt -iL "$LIVE_TARGETS_FILE" --open
   fi
   
   run_if_open "VNC NSE" tcp "5800,5801,5900,5901" \
-    nmap -n -sV "-${TIMING}" --script 'vnc-*' -p 5800,5801,5900,5901 -oN s_vnc.txt -iL "$LIVE_TARGETS_FILE" --open
+    nmap -n -sV "-${TIMING}" --script 'vnc-*' -p 5800,5801,5900,5901 -oN ${NSE_DIR}/s_vnc.txt -iL "$LIVE_TARGETS_FILE" --open
   
   generate_html_report
   

@@ -110,7 +110,7 @@ run_rpc_135_checks() {
   local port
 
   printf '\n%sChecking MSRPC (135)%s\n' "$CLR_CYAN" "$CLR_RESET"
-  rm -f s_rpcdump_135.txt s_rpcclient_135.txt
+  rm -f ${TOOL_DIR}/s_rpcdump_135.txt ${TOOL_DIR}/s_rpcclient_135.txt
 
   while read -r target port; do
     [[ -n "${target:-}" ]] || continue
@@ -118,14 +118,14 @@ run_rpc_135_checks() {
 
     if command_available impacket-rpcdump; then
       printf '\n%sChecking For Exposed RPC Services:%s %s:%s\n' "$CLR_CYAN" "$CLR_RESET" "$target" "$port"
-      run_logged_check "Exposed RPC Services" s_rpcdump_135.txt impacket-rpcdump -p "$port" "$target" || true
+      run_logged_check "Exposed RPC Services" ${TOOL_DIR}/s_rpcdump_135.txt impacket-rpcdump -p "$port" "$target" || true
     else
       printf '%sSkipping impacket-rpcdump For %s:%s:%s Command Not Found\n' "$CLR_YELLOW" "$target" "$port" "$CLR_RESET"
     fi
 
     if command_available rpcclient; then
       printf '%sChecking For Unauthenticated Remote Procedure Call:%s %s\n' "$CLR_CYAN" "$CLR_RESET" "$target"
-      run_logged_check "Unauthenticated Remote Procedure Call" s_rpcclient_135.txt rpcclient -U "" -N -c enumprivs "$target" || true
+      run_logged_check "Unauthenticated Remote Procedure Call" ${TOOL_DIR}/s_rpcclient_135.txt rpcclient -U "" -N -c enumprivs "$target" || true
     else
       printf '%sSkipping rpcclient For %s:%s Command Not Found\n' "$CLR_YELLOW" "$target" "$CLR_RESET"
     fi
@@ -141,7 +141,7 @@ run_ldapsearch_checks() {
   local target
   local port
 
-  rm -f s_ldapsearch.txt
+  rm -f ${TOOL_DIR}/s_ldapsearch.txt
 
   while read -r target port; do
     [[ -n "${target:-}" ]] || continue
@@ -149,7 +149,7 @@ run_ldapsearch_checks() {
 
     if command_available ldapsearch; then
       printf '\n%sChecking For LDAP Anonymous Bind:%s %s:%s\n' "$CLR_CYAN" "$CLR_RESET" "$target" "$port"
-      run_logged_check "LDAP Anonymous Bind" s_ldapsearch.txt ldapsearch -x -s base -b "" "(objectClass=*)" "*" -H "ldap://${target}:${port}" || true
+      run_logged_check "LDAP Anonymous Bind" ${TOOL_DIR}/s_ldapsearch.txt ldapsearch -x -s base -b "" "(objectClass=*)" "*" -H "ldap://${target}:${port}" || true
     else
       printf '%sSkipping ldapsearch For %s:%s:%s Command Not Found\n' "$CLR_YELLOW" "$target" "$port" "$CLR_RESET"
     fi
@@ -176,8 +176,8 @@ run_smb_external_checks() {
     return
   fi
 
-  write_open_targets_file tcp 445 targets_smb.txt
-  if [[ ! -s targets_smb.txt ]]; then
+  write_open_targets_file tcp 445 ${TOOL_DIR}/targets_smb.txt
+  if [[ ! -s ${TOOL_DIR}/targets_smb.txt ]]; then
     printf '%sNo SMB (445) Found%s\n' "$CLR_YELLOW" "$CLR_RESET"
     return
   fi
@@ -189,13 +189,13 @@ run_smb_external_checks() {
 
   printf '\n%sChecking For Misconfigured Server Message Block Signing%s\n' "$CLR_CYAN" "$CLR_RESET"
   temp_output="$(mktemp "${TMPDIR:-/tmp}/bident_check.XXXXXX")"
-  netexec smb --gen-relay-list targets_smb.txt "$LIVE_TARGETS_FILE" 2>&1 \
+  netexec smb --gen-relay-list ${TOOL_DIR}/targets_smb.txt "$LIVE_TARGETS_FILE" 2>&1 \
     | grep 'signing:False' > "$temp_output" || true
   if [[ -s "$temp_output" ]]; then
-    append_command_header cme_smb_signing_false.txt netexec smb --gen-relay-list targets_smb.txt "$LIVE_TARGETS_FILE"
-    cat "$temp_output" >> cme_smb_signing_false.txt
+    append_command_header ${TOOL_DIR}/cme_smb_signing_false.txt netexec smb --gen-relay-list ${TOOL_DIR}/targets_smb.txt "$LIVE_TARGETS_FILE"
+    cat "$temp_output" >> ${TOOL_DIR}/cme_smb_signing_false.txt
   else
-    rm -f cme_smb_signing_false.txt
+    rm -f ${TOOL_DIR}/cme_smb_signing_false.txt
   fi
   print_check_result "Misconfigured Server Message Block Signing" "$temp_output"
   rm -f "$temp_output"
@@ -205,10 +205,10 @@ run_smb_external_checks() {
   netexec smb "$LIVE_TARGETS_FILE" 2>&1 \
     | grep 'SMBv1:True' > "$temp_output" || true
   if [[ -s "$temp_output" ]]; then
-    append_command_header cme_smbv1_true.txt netexec smb "$LIVE_TARGETS_FILE"
-    cat "$temp_output" >> cme_smbv1_true.txt
+    append_command_header ${TOOL_DIR}/cme_smbv1_true.txt netexec smb "$LIVE_TARGETS_FILE"
+    cat "$temp_output" >> ${TOOL_DIR}/cme_smbv1_true.txt
   else
-    rm -f cme_smbv1_true.txt
+    rm -f ${TOOL_DIR}/cme_smbv1_true.txt
   fi
   print_check_result "SMBv1 Enabled" "$temp_output"
   rm -f "$temp_output"
@@ -226,16 +226,16 @@ run_ssh_audit_check() {
   fi
 
   printf '\n%sChecking For Weak SSH Ciphers%s\n' "$CLR_CYAN" "$CLR_RESET"
-  rm -f ssh-audit_results.txt
-  run_logged_check "Weak SSH Ciphers" ssh-audit_results.txt ssh-audit -T "$LIVE_TARGETS_FILE" || true
+  rm -f ${TOOL_DIR}/ssh-audit_results.txt
+  run_logged_check "Weak SSH Ciphers" ${TOOL_DIR}/ssh-audit_results.txt ssh-audit -T "$LIVE_TARGETS_FILE" || true
 }
 
 run_dns_dig_checks() {
   local target
   local port
   local temp_output
-  local dnssec_file="dnssec_not_configured.txt"
-  local recursion_file="dns_recursion_enabled.txt"
+  local dnssec_file="${TOOL_DIR}/dnssec_not_configured.txt"
+  local recursion_file="${TOOL_DIR}/dns_recursion_enabled.txt"
 
   if ! has_open_port any 53; then
     return
@@ -308,14 +308,14 @@ run_ssl_external_checks() {
 
   if command_available testssl; then
     has_testssl=true
-    : > testssl_results.txt
+    : > ${TOOL_DIR}/testssl_results.txt
   else
     printf '%sSkipping testssl Checks:%s Command Not Found\n' "$CLR_YELLOW" "$CLR_RESET"
   fi
 
   if command_available sslscan; then
     has_sslscan=true
-    : > sslscan_results.txt
+    : > ${TOOL_DIR}/sslscan_results.txt
   else
     printf '%sSkipping sslscan Checks:%s Command Not Found\n' "$CLR_YELLOW" "$CLR_RESET"
   fi
@@ -332,27 +332,27 @@ run_ssl_external_checks() {
 
   if [[ "$found" == false ]]; then
     printf '%sNo SSL/TLS Ports Found For testssl/sslscan%s\n' "$CLR_YELLOW" "$CLR_RESET"
-    [[ ! -e testssl_results.txt || -s testssl_results.txt ]] || rm -f testssl_results.txt
-    [[ ! -e sslscan_results.txt || -s sslscan_results.txt ]] || rm -f sslscan_results.txt
+    [[ ! -e ${TOOL_DIR}/testssl_results.txt || -s ${TOOL_DIR}/testssl_results.txt ]] || rm -f ${TOOL_DIR}/testssl_results.txt
+    [[ ! -e ${TOOL_DIR}/sslscan_results.txt || -s ${TOOL_DIR}/sslscan_results.txt ]] || rm -f ${TOOL_DIR}/sslscan_results.txt
     return
   fi
 
   if [[ "$has_testssl" == true ]]; then
     printf '\n%sRunning testssl%s\n' "$CLR_CYAN" "$CLR_RESET"
     for entry in "${ssl_targets[@]}"; do
-      run_logged testssl_results.txt testssl "$entry" || true
+      run_logged ${TOOL_DIR}/testssl_results.txt testssl "$entry" || true
     done
   fi
 
   if [[ "$has_sslscan" == true ]]; then
     printf '%sRunning sslscan%s\n' "$CLR_CYAN" "$CLR_RESET"
     for entry in "${ssl_targets[@]}"; do
-      run_logged sslscan_results.txt sslscan "$entry" || true
+      run_logged ${TOOL_DIR}/sslscan_results.txt sslscan "$entry" || true
     done
   fi
 
-  [[ ! -e testssl_results.txt || -s testssl_results.txt ]] || rm -f testssl_results.txt
-  [[ ! -e sslscan_results.txt || -s sslscan_results.txt ]] || rm -f sslscan_results.txt
+  [[ ! -e ${TOOL_DIR}/testssl_results.txt || -s ${TOOL_DIR}/testssl_results.txt ]] || rm -f ${TOOL_DIR}/testssl_results.txt
+  [[ ! -e ${TOOL_DIR}/sslscan_results.txt || -s ${TOOL_DIR}/sslscan_results.txt ]] || rm -f ${TOOL_DIR}/sslscan_results.txt
 }
 
 run_ike_weak_encryption_check() {
@@ -361,7 +361,7 @@ run_ike_weak_encryption_check() {
   local target
   local port
   local temp_output
-  local outfile="ike_weak_encryption.txt"
+  local outfile="${TOOL_DIR}/ike_weak_encryption.txt"
 
   if ! has_open_port udp 500; then
     return

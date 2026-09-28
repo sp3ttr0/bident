@@ -7,13 +7,13 @@ has_open_port() {
 
   case "$proto" in
     tcp)
-      files=(syn.gnmap con.gnmap)
+      files=("${SCAN_DIR}/syn.gnmap" "${SCAN_DIR}/con.gnmap")
       ;;
     udp)
-      files=(udp.gnmap)
+      files=("${SCAN_DIR}/udp.gnmap")
       ;;
     any)
-      files=(syn.gnmap con.gnmap udp.gnmap)
+      files=("${SCAN_DIR}/syn.gnmap" "${SCAN_DIR}/con.gnmap" "${SCAN_DIR}/udp.gnmap")
       ;;
     *)
       die "Unknown protocol for port check: $proto"
@@ -54,7 +54,7 @@ has_open_port() {
 has_any_open_port() {
   local file
 
-  for file in syn.gnmap con.gnmap udp.gnmap; do
+  for file in "${SCAN_DIR}/syn.gnmap" "${SCAN_DIR}/con.gnmap" "${SCAN_DIR}/udp.gnmap"; do
     [[ -s "$file" ]] || continue
     if awk '
       /Ports: / {
@@ -91,13 +91,13 @@ open_target_ports() {
 
   case "$proto" in
     tcp)
-      files=(syn.gnmap con.gnmap)
+      files=("${SCAN_DIR}/syn.gnmap" "${SCAN_DIR}/con.gnmap")
       ;;
     udp)
-      files=(udp.gnmap)
+      files=("${SCAN_DIR}/udp.gnmap")
       ;;
     any)
-      files=(syn.gnmap con.gnmap udp.gnmap)
+      files=("${SCAN_DIR}/syn.gnmap" "${SCAN_DIR}/con.gnmap" "${SCAN_DIR}/udp.gnmap")
       ;;
     *)
       die "Unknown protocol for target-port extraction: $proto"
@@ -134,7 +134,7 @@ open_target_ports() {
 all_open_target_ports() {
   local file
 
-  for file in syn.gnmap con.gnmap udp.gnmap; do
+  for file in "${SCAN_DIR}/syn.gnmap" "${SCAN_DIR}/con.gnmap" "${SCAN_DIR}/udp.gnmap"; do
     [[ -s "$file" ]] || continue
     awk '
       /Ports: / {
@@ -162,7 +162,7 @@ generate_services_report() {
 
   {
     printf 'target\tprotocol\tport\tname\tinfo\ttarget_port\n'
-    for file in syn.gnmap con.gnmap udp.gnmap; do
+    for file in "${SCAN_DIR}/syn.gnmap" "${SCAN_DIR}/con.gnmap" "${SCAN_DIR}/udp.gnmap"; do
       [[ -s "$file" ]] || continue
       awk '
         function trim(value) {
