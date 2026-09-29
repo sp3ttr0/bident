@@ -315,7 +315,7 @@ main() {
   
   generate_open_port_reports
   
-  printf '\n%sBase Scans Finished:%s Starting Conditional NSE Stage...\n' "$CLR_GREEN" "$CLR_RESET"
+  printf '\n%sBase Scans Finished:%s Starting Port Scanning and Vulnerability Scanning...\n' "$CLR_GREEN" "$CLR_RESET"
   
   run_if_open "FTP NSE" tcp "21" \
     nmap -n -sV "-${TIMING}" --script 'ftp-*' -p 21 -oN ${NSE_DIR}/s_ftp.txt -iL "$LIVE_TARGETS_FILE" --open
@@ -429,7 +429,6 @@ main() {
   generate_html_report
   generate_json_summary
   
-  printf '\n%sConditional NSE Stage Finished.%s\n' "$CLR_GREEN" "$CLR_RESET"
   printf '%sScan Completed.%s\n' "$CLR_GREEN" "$CLR_RESET"
   exit 0
   
