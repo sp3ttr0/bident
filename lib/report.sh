@@ -119,6 +119,45 @@ append_ssl_external_result_files() {
   append_result_file_section "$outfile" sslscan_results.txt
 }
 
+append_artifact_link() {
+  local outfile="$1"
+  local artifact="$2"
+
+  if [[ -s "$artifact" ]]; then
+    printf '<a href="%s">%s</a>\n' "$(html_escape_text "$artifact")" "$(html_escape_text "$artifact")" >> "$outfile"
+  fi
+}
+
+append_core_artifact_group() {
+  local outfile="$1"
+  local label="$2"
+  shift 2
+  local artifact
+  local temp_file
+  local item_count=0
+
+  temp_file="$(mktemp "${TMPDIR:-/tmp}/bident_artifacts.XXXXXX")"
+  for artifact in "$@"; do
+    if [[ -s "$artifact" ]]; then
+      printf '<a href="%s">%s</a>\n' "$(html_escape_text "$artifact")" "$(html_escape_text "$artifact")" >> "$temp_file"
+      item_count=$((item_count + 1))
+    fi
+  done
+
+  if [[ -s "$temp_file" ]]; then
+    {
+      printf '    <details class="artifact artifact-group">\n'
+      printf '      <summary>%s <span class="artifact-file">%s item(s)</span></summary>\n' "$(html_escape_text "$label")" "$item_count"
+      printf '      <div class="file-list">'
+      cat "$temp_file"
+      printf '      </div>\n'
+      printf '    </details>\n'
+    } >> "$outfile"
+  fi
+
+  rm -f "$temp_file"
+}
+
 append_msf_result_files() {
   local outfile="$1"
   local proto="$2"
@@ -720,6 +759,16 @@ generate_html_report() {
     .core-artifacts {
       margin-top: 10px;
     }
+    .artifact-group {
+      box-shadow: none;
+      margin: 10px 14px;
+    }
+    .artifact-group .file-list {
+      border: 0;
+      border-radius: 0;
+      box-shadow: none;
+      margin: 0;
+    }
     .empty {
       padding: 14px 16px;
     }
@@ -841,13 +890,27 @@ HTML
     printf '  <h2>Core Artifacts</h2>\n'
     printf '  <details class="artifact core-artifacts">\n'
     printf '    <summary>Core Artifacts</summary>\n'
-    printf '    <div class="file-list">'
-    for artifact in "$TARGETS_FILE" "$LIVE_TARGETS_FILE" "${SCAN_DIR}/syn.nmap" "${SCAN_DIR}/con.nmap" "${SCAN_DIR}/udp.nmap" "${SCAN_DIR}/syn.gnmap" "${SCAN_DIR}/con.gnmap" "${SCAN_DIR}/udp.gnmap" "${SCAN_DIR}/syn.xml" "${SCAN_DIR}/con.xml" "${SCAN_DIR}/udp.xml" targets_with_open_ports/services.tsv targets_with_open_ports/open_ports_all.tsv targets_with_open_ports/open_ports_mentioned.tsv targets_with_open_ports/open_ports_by_target.txt "${MSF_DIR}/metasploit_auxiliary.rc" "${MSF_DIR}/msfconsole.log"; do
-      if [[ -f "$artifact" ]]; then
-        printf '<a href="%s">%s</a>\n' "$(html_escape_text "$artifact")" "$(html_escape_text "$artifact")"
-      fi
-    done
-    printf '    </div>\n'
+  } >> "$report_file"
+  append_core_artifact_group "$report_file" "Targets" \
+    "$TARGETS_FILE" "$LIVE_TARGETS_FILE"
+  append_core_artifact_group "$report_file" "Base Scan Outputs" \
+    "${SCAN_DIR}/syn.nmap" "${SCAN_DIR}/con.nmap" "${SCAN_DIR}/udp.nmap" \
+    "${SCAN_DIR}/syn.gnmap" "${SCAN_DIR}/con.gnmap" "${SCAN_DIR}/udp.gnmap" \
+    "${SCAN_DIR}/syn.xml" "${SCAN_DIR}/con.xml" "${SCAN_DIR}/udp.xml"
+  append_core_artifact_group "$report_file" "Open Port Tables" \
+    targets_with_open_ports/services.tsv \
+    targets_with_open_ports/open_ports_all.tsv \
+    targets_with_open_ports/open_ports_mentioned.tsv \
+    targets_with_open_ports/open_ports_by_target.txt
+  append_core_artifact_group "$report_file" "Nmap Script Results" \
+    "${NSE_DIR}"/*.txt
+  append_core_artifact_group "$report_file" "External Tool Results" \
+    "${TOOL_DIR}"/*.txt
+  append_core_artifact_group "$report_file" "Metasploit Results" \
+    "${MSF_DIR}/metasploit_auxiliary.rc" \
+    "${MSF_DIR}"/metasploit_auxiliary_*.rc \
+    "${MSF_DIR}/msfconsole.log"
+  {
     printf '  </details>\n'
     printf '  <section class="notice">\n'
     printf '    <strong>Disclaimer</strong>\n'
