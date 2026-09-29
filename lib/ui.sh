@@ -83,7 +83,7 @@ print_banner() {
   banner_line "$CLR_DIM"    "                         . . . . . . . . . . ."
   printf '\n'
   printf '                              %s%sBident%s\n' "$CLR_BOLD" "$CLR_BRIGHT_RED" "$CLR_RESET"
-  printf '                         %s%sNetwork VAPT Tool%s\n' "$CLR_BOLD" "$CLR_SOFT_RED" "$CLR_RESET"
+  printf '                       %s%sNetwork VAPT Toolkit%s\n' "$CLR_BOLD" "$CLR_SOFT_RED" "$CLR_RESET"
   printf '                               %sby sp3ttr0%s\n' "$CLR_HANDLE" "$CLR_RESET"
   printf '\n'
 }
