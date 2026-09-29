@@ -136,7 +136,7 @@ run_rpc_135_checks() {
   done < <(open_target_ports tcp 135)
 
   if [[ "$found" == false ]]; then
-    printf '%sNo MSRPC (135) Found%s\n' "$CLR_YELLOW" "$CLR_RESET"
+    return
   fi
 }
 
@@ -160,7 +160,7 @@ run_ldapsearch_checks() {
   done < <(open_target_ports tcp 389 3268)
 
   if [[ "$found" == false ]]; then
-    printf '%sNo LDAP Anonymous Bind (389,3268) Found%s\n' "$CLR_YELLOW" "$CLR_RESET"
+    return
   fi
 }
 
@@ -176,13 +176,11 @@ run_smb_external_checks() {
   local temp_output
 
   if ! has_open_port tcp 445; then
-    printf '%sNo SMB (445) Found%s\n' "$CLR_YELLOW" "$CLR_RESET"
     return
   fi
 
   write_open_targets_file tcp 445 ${TOOL_DIR}/targets_smb.txt
   if [[ ! -s ${TOOL_DIR}/targets_smb.txt ]]; then
-    printf '%sNo SMB (445) Found%s\n' "$CLR_YELLOW" "$CLR_RESET"
     return
   fi
 
@@ -223,7 +221,6 @@ run_smb_external_checks() {
 
 run_ssh_audit_check() {
   if ! has_open_port tcp 22; then
-    printf '%sNo Weak SSH Ciphers (22) Found%s\n' "$CLR_YELLOW" "$CLR_RESET"
     return
   fi
 
@@ -340,7 +337,6 @@ run_ssl_external_checks() {
   done < <(open_target_ports tcp 443 465 587 636 993 995 3269 3389 8443)
 
   if [[ "$found" == false ]]; then
-    printf '%sNo SSL/TLS Ports Found For testssl/sslscan%s\n' "$CLR_YELLOW" "$CLR_RESET"
     [[ ! -e ${TOOL_DIR}/testssl_results.txt || -s ${TOOL_DIR}/testssl_results.txt ]] || rm -f ${TOOL_DIR}/testssl_results.txt
     [[ ! -e ${TOOL_DIR}/sslscan_results.txt || -s ${TOOL_DIR}/sslscan_results.txt ]] || rm -f ${TOOL_DIR}/sslscan_results.txt
     return
@@ -414,7 +410,7 @@ run_ike_weak_encryption_check() {
   done < <(open_target_ports udp 500)
 
   if [[ "$found" == false ]]; then
-    printf '%sNo IKE (500) Found%s\n' "$CLR_YELLOW" "$CLR_RESET"
+    return
   fi
 
   [[ "$finding" == true ]] || rm -f "$outfile"

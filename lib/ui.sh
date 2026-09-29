@@ -1,6 +1,8 @@
 usage() {
   printf '%s\n' \
     'Usage: sudo ./bident.sh (-f <scope-file> | -t <target> | --resume <results-dir>) [-o <results-dir>] [-p-] [--no-udp] [--responder] [-T1|-T2|-T3|-T4|-T5]' \
+    '       sudo ./bident.sh --check-deps' \
+    '       sudo ./bident.sh --install-deps' \
     '' \
     'Bident is a network VAPT helper that expands scope, discovers live hosts,' \
     'runs TCP/UDP port scans, launches targeted follow-up checks, and generates' \
@@ -14,6 +16,8 @@ usage() {
     'Options:' \
     '  -o <results-dir>  Write all results into this folder.' \
     '  -p-               Scan all TCP/UDP ports.' \
+    '  --check-deps      Show installed and missing tools.' \
+    '  --install-deps    Install supported dependencies from Kali/Parrot apt repos.' \
     '  --no-udp          Skip UDP scans and UDP follow-up checks.' \
     '  --responder       Start Responder on eth0 in a separate screen session.' \
     '  -T1..-T5          Set the Nmap timing template. Default: -T4.' \
@@ -23,6 +27,8 @@ usage() {
     'Examples:' \
     '  sudo ./bident.sh -f scope.txt -p- -T4' \
     '  sudo ./bident.sh -t 192.0.2.10 --no-udp -T4' \
+    '  sudo ./bident.sh --check-deps' \
+    '  sudo ./bident.sh --install-deps' \
     '  sudo ./bident.sh --resume bident_results_20260928_120000'
 }
 

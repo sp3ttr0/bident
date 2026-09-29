@@ -34,6 +34,14 @@ main() {
         RUN_RESPONDER=true
         shift
         ;;
+      --check-deps)
+        CHECK_DEPS=true
+        shift
+        ;;
+      --install-deps)
+        INSTALL_DEPS=true
+        shift
+        ;;
       -o|--output-dir|--results-dir)
         [[ -n "${2:-}" ]] || die "$1 requires a results directory"
         RESULTS_DIR="$2"
@@ -88,6 +96,17 @@ main() {
     esac
   done
   
+  if [[ "$CHECK_DEPS" == true || "$INSTALL_DEPS" == true ]]; then
+    print_banner
+    if [[ "$CHECK_DEPS" == true ]]; then
+      print_dependency_status
+    fi
+    if [[ "$INSTALL_DEPS" == true ]]; then
+      install_dependencies
+    fi
+    exit 0
+  fi
+
   if [[ -z "$SCOPE_FILE" && -z "$SINGLE_TARGET" && -z "$RESUME_DIR" ]]; then
     die "Missing target input: use -f <scope-file> or -t <target>"
   fi

@@ -14,6 +14,8 @@ SCAN_POLL_SECONDS="${SCAN_POLL_SECONDS:-60}"
 PORT_FLAG=""
 NO_UDP=false
 RUN_RESPONDER=false
+CHECK_DEPS=false
+INSTALL_DEPS=false
 RESPONDER_INTERFACE="${RESPONDER_INTERFACE:-eth0}"
 SCOPE_FILE=""
 SINGLE_TARGET=""
@@ -31,6 +33,15 @@ MENTIONED_TCP_PORTS=(
 )
 MENTIONED_UDP_PORTS=(
   53 111 123 137 161 162 500 623 5060
+)
+
+CORE_TOOLS=(
+  nmap screen awk sort grep tee sudo
+)
+
+OPTIONAL_TOOLS=(
+  netexec ssh-audit impacket-rpcdump rpcclient ldapsearch dig testssl sslscan
+  ike-scan responder msfconsole
 )
 
 if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then

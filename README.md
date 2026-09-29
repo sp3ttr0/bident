@@ -35,14 +35,25 @@ cd <repository-folder>
 chmod +x bident.sh
 ```
 
-Install core dependencies with your package manager. Example for Debian or Ubuntu:
+Check what is already installed:
 
 ```bash
-sudo apt update
-sudo apt install -y nmap screen dnsutils ldap-utils smbclient
+sudo ./bident.sh --check-deps
 ```
 
-Install optional tools as needed for deeper checks.
+Install supported dependencies automatically:
+
+```bash
+sudo ./bident.sh --install-deps
+```
+
+Bident currently focuses automatic installation on VAPT-focused Debian-based systems such as Kali and Parrot. `--install-deps` uses `apt` and installs packages available from the configured repositories. Any unavailable package is skipped with a clear message.
+
+Packages attempted by `--install-deps`:
+
+```bash
+nmap screen dnsutils ldap-utils smbclient samba-common-bin sslscan ike-scan ssh-audit python3-impacket responder metasploit-framework testssl.sh netexec
+```
 
 ## Usage
 
@@ -63,6 +74,8 @@ sudo ./bident.sh (-f <scope-file> | -t <target> | --resume <results-dir>) [-o <r
 ```bash
 -o <results-dir>  Write all results into this folder.
 -p-               Scan all TCP/UDP ports.
+--check-deps      Show installed and missing tools.
+--install-deps    Install supported dependencies from Kali/Parrot apt repos.
 --no-udp          Skip UDP scans and UDP follow-up checks.
 --responder       Start Responder on eth0 in a separate screen session.
 -T1..-T5          Set the Nmap timing template. Default: -T4.
