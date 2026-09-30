@@ -30,6 +30,20 @@ main() {
         NO_UDP=true
         shift
         ;;
+      --no-msf)
+        NO_MSF=true
+        shift
+        ;;
+      --tool-timeout)
+        [[ -n "${2:-}" ]] || die "--tool-timeout requires seconds"
+        case "$2" in
+          ''|*[!0-9]*)
+            die "--tool-timeout must be a non-negative integer"
+            ;;
+        esac
+        TOOL_TIMEOUT="$2"
+        shift 2
+        ;;
       --responder)
         RUN_RESPONDER=true
         shift
@@ -132,9 +146,22 @@ main() {
       die "Invalid timing value: $TIMING. Use -T1 through -T5"
       ;;
   esac
+
+  case "$TOOL_TIMEOUT" in
+    ''|*[!0-9]*)
+      die "Invalid tool timeout: $TOOL_TIMEOUT. Use a non-negative integer"
+      ;;
+  esac
   
   print_banner
   printf '%sTiming Template:%s -%s\n' "$CLR_CYAN" "$CLR_RESET" "$TIMING"
+  if [[ "$TOOL_TIMEOUT" -gt 0 ]]; then
+    if command_available timeout; then
+      printf '%sTool Timeout:%s %s seconds\n' "$CLR_CYAN" "$CLR_RESET" "$TOOL_TIMEOUT"
+    else
+      printf '%sTool Timeout:%s Disabled because timeout command was not found\n' "$CLR_YELLOW" "$CLR_RESET"
+    fi
+  fi
   
   need_command awk
   need_command cat
@@ -254,6 +281,11 @@ main() {
     printf '%sUDP Mode:%s Disabled (--no-udp Enabled)\n' "$CLR_CYAN" "$CLR_RESET"
   else
     printf '%sUDP Mode:%s Enabled\n' "$CLR_CYAN" "$CLR_RESET"
+  fi
+  if [[ "$NO_MSF" == true ]]; then
+    printf '%sMetasploit Mode:%s Disabled (--no-msf Enabled)\n' "$CLR_CYAN" "$CLR_RESET"
+  else
+    printf '%sMetasploit Mode:%s Enabled\n' "$CLR_CYAN" "$CLR_RESET"
   fi
   
   BASE_SCAN_SESSIONS=(syn con)
@@ -424,11 +456,16 @@ main() {
   run_if_open "VNC NSE" tcp "5800,5801,5900,5901" \
     nmap -n -sV "-${TIMING}" --script 'vnc-*' -p 5800,5801,5900,5901 -oN ${NSE_DIR}/s_vnc.txt -iL "$LIVE_TARGETS_FILE" --open
 
-  run_msf_auxiliary_checks
+  if [[ "$NO_MSF" == true ]]; then
+    printf '\n%sSkipping Metasploit Auxiliary Checks:%s --no-msf Enabled\n' "$CLR_YELLOW" "$CLR_RESET"
+  else
+    run_msf_auxiliary_checks
+  fi
   
   generate_html_report
   generate_json_summary
   
+  print_final_summary
   printf '%sScan Completed.%s\n' "$CLR_GREEN" "$CLR_RESET"
   exit 0
   

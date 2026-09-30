@@ -175,7 +175,7 @@ run_msf_auxiliary_checks() {
     printf '\n%sRunning Metasploit Auxiliary For:%s %s (%s module(s))\n' "$CLR_CYAN" "$CLR_RESET" "${rc_labels[$index]}" "$port_module_count"
     {
       printf '\n===== %s :: %s =====\n' "$(date '+%Y-%m-%d %H:%M:%S')" "${rc_labels[$index]}"
-      msfconsole -q -r "$rc_file"
+      run_with_timeout msfconsole -q -r "$rc_file"
     } >> "${MSF_DIR}/msfconsole.log" 2>&1 || true
     completed_modules=$((completed_modules + port_module_count))
     print_progress_bar "Metasploit Progress" "$completed_modules" "$module_count"

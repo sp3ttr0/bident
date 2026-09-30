@@ -76,8 +76,10 @@ sudo ./bident.sh (-f <scope-file> | -t <target> | --resume <results-dir>) [-o <r
 -p-               Scan all TCP/UDP ports.
 --check-deps      Show installed and missing tools.
 --install-deps    Install supported dependencies from Kali/Parrot apt repos.
+--no-msf          Skip Metasploit auxiliary checks.
 --no-udp          Skip UDP scans and UDP follow-up checks.
 --responder       Start Responder on eth0 in a separate screen session.
+--tool-timeout N  Timeout for external tools, in seconds. Default: disabled.
 -T1..-T5          Set the Nmap timing template. Default: -T4.
 -T <1-5>          Alternate timing syntax.
 --speed <1-5>     Alternate timing syntax.
@@ -95,6 +97,12 @@ Scan all ports with Nmap timing `-T4`:
 
 ```bash
 sudo ./bident.sh -f scope.txt -p- -T4
+```
+
+Run without Metasploit and cap external tool runtime at 300 seconds:
+
+```bash
+sudo ./bident.sh -f scope.txt --no-msf --tool-timeout 300
 ```
 
 Scan a single target and skip UDP:

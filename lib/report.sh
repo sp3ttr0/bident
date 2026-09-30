@@ -164,6 +164,8 @@ append_msf_result_files() {
   local port="$3"
   local result_file
 
+  [[ "${NO_MSF:-false}" == true ]] && return
+
   for result_file in "${MSF_RESULT_DIR}/"*"_${proto}_${port}.txt"; do
     [[ -s "$result_file" ]] || continue
     append_result_file_section "$outfile" "$result_file"
@@ -906,10 +908,12 @@ HTML
     "${NSE_DIR}"/*.txt
   append_core_artifact_group "$report_file" "External Tool Results" \
     "${TOOL_DIR}"/*.txt
-  append_core_artifact_group "$report_file" "Metasploit Results" \
-    "${MSF_DIR}/metasploit_auxiliary.rc" \
-    "${MSF_DIR}"/metasploit_auxiliary_*.rc \
-    "${MSF_DIR}/msfconsole.log"
+  if [[ "${NO_MSF:-false}" != true ]]; then
+    append_core_artifact_group "$report_file" "Metasploit Results" \
+      "${MSF_DIR}/metasploit_auxiliary.rc" \
+      "${MSF_DIR}"/metasploit_auxiliary_*.rc \
+      "${MSF_DIR}/msfconsole.log"
+  fi
   {
     printf '  </details>\n'
     printf '  <section class="notice">\n'

@@ -1,6 +1,6 @@
 usage() {
   printf '%s\n' \
-    'Usage: sudo ./bident.sh (-f <scope-file> | -t <target> | --resume <results-dir>) [-o <results-dir>] [-p-] [--no-udp] [--responder] [-T1|-T2|-T3|-T4|-T5]' \
+    'Usage: sudo ./bident.sh (-f <scope-file> | -t <target> | --resume <results-dir>) [-o <results-dir>] [-p-] [--no-udp] [--no-msf] [--tool-timeout N] [--responder] [-T1|-T2|-T3|-T4|-T5]' \
     '       sudo ./bident.sh --check-deps' \
     '       sudo ./bident.sh --install-deps' \
     '' \
@@ -18,14 +18,17 @@ usage() {
     '  -p-               Scan all TCP/UDP ports.' \
     '  --check-deps      Show installed and missing tools.' \
     '  --install-deps    Install supported dependencies from Kali/Parrot apt repos.' \
+    '  --no-msf          Skip Metasploit auxiliary checks.' \
     '  --no-udp          Skip UDP scans and UDP follow-up checks.' \
     '  --responder       Start Responder on eth0 in a separate screen session.' \
+    '  --tool-timeout N  Timeout for external tools, in seconds. Default: disabled.' \
     '  -T1..-T5          Set the Nmap timing template. Default: -T4.' \
     '  -T <1-5>          Alternate timing syntax.' \
     '  --speed <1-5>     Alternate timing syntax.' \
     '' \
     'Examples:' \
     '  sudo ./bident.sh -f scope.txt -p- -T4' \
+    '  sudo ./bident.sh -f scope.txt --no-msf --tool-timeout 300' \
     '  sudo ./bident.sh -t 192.0.2.10 --no-udp -T4' \
     '  sudo ./bident.sh --check-deps' \
     '  sudo ./bident.sh --install-deps' \

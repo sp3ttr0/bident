@@ -36,7 +36,7 @@ run_logged() {
   shift
 
   append_command_header "$outfile" "$@"
-  "$@" >> "$outfile" 2>&1
+  run_with_timeout "$@" >> "$outfile" 2>&1
 }
 
 print_check_result() {
@@ -96,7 +96,7 @@ run_logged_check() {
   shift 2
 
   temp_output="$(mktemp "${TMPDIR:-/tmp}/bident_check.XXXXXX")"
-  "$@" > "$temp_output" 2>&1 || status=$?
+  run_with_timeout "$@" > "$temp_output" 2>&1 || status=$?
   if result_output_has_finding "$label" "$temp_output"; then
     append_command_header "$outfile" "$@"
     cat "$temp_output" >> "$outfile"
@@ -191,7 +191,7 @@ run_smb_external_checks() {
 
   printf '\n%sChecking For Misconfigured Server Message Block Signing%s\n' "$CLR_CYAN" "$CLR_RESET"
   temp_output="$(mktemp "${TMPDIR:-/tmp}/bident_check.XXXXXX")"
-  netexec smb --gen-relay-list ${TOOL_DIR}/targets_smb.txt "$LIVE_TARGETS_FILE" 2>&1 \
+  run_with_timeout netexec smb --gen-relay-list ${TOOL_DIR}/targets_smb.txt "$LIVE_TARGETS_FILE" 2>&1 \
     | grep 'signing:False' > "$temp_output" || true
   if [[ -s "$temp_output" ]]; then
     append_command_header ${TOOL_DIR}/nxc_smb_signing_false.txt netexec smb --gen-relay-list ${TOOL_DIR}/targets_smb.txt "$LIVE_TARGETS_FILE"
@@ -207,7 +207,7 @@ run_smb_external_checks() {
 
   printf '%sChecking For SMBv1 Enabled%s\n' "$CLR_CYAN" "$CLR_RESET"
   temp_output="$(mktemp "${TMPDIR:-/tmp}/bident_check.XXXXXX")"
-  netexec smb "$LIVE_TARGETS_FILE" 2>&1 \
+  run_with_timeout netexec smb "$LIVE_TARGETS_FILE" 2>&1 \
     | grep 'SMBv1:True' > "$temp_output" || true
   if [[ -s "$temp_output" ]]; then
     append_command_header ${TOOL_DIR}/nxc_smbv1_true.txt netexec smb "$LIVE_TARGETS_FILE"
@@ -259,9 +259,9 @@ run_dns_dig_checks() {
     printf '\n%sChecking For DNSSec Not Configured:%s %s:%s\n' "$CLR_CYAN" "$CLR_RESET" "$target" "$port"
     temp_output="$(mktemp "${TMPDIR:-/tmp}/bident_check.XXXXXX")"
     if [[ "$NO_UDP" == true ]]; then
-      dig +tcp +dnssec "@${target}" google.com A > "$temp_output" 2>&1 || true
+      run_with_timeout dig +tcp +dnssec "@${target}" google.com A > "$temp_output" 2>&1 || true
     else
-      dig +dnssec "@${target}" google.com A > "$temp_output" 2>&1 || true
+      run_with_timeout dig +dnssec "@${target}" google.com A > "$temp_output" 2>&1 || true
     fi
     if grep -q 'flags:' "$temp_output" && ! grep -Eq 'flags:.*[[:space:]]ad[;[:space:]]' "$temp_output"; then
       if [[ "$NO_UDP" == true ]]; then
@@ -279,9 +279,9 @@ run_dns_dig_checks() {
     printf '%sChecking For DNS Recursion Enabled:%s %s:%s\n' "$CLR_CYAN" "$CLR_RESET" "$target" "$port"
     temp_output="$(mktemp "${TMPDIR:-/tmp}/bident_check.XXXXXX")"
     if [[ "$NO_UDP" == true ]]; then
-      dig +tcp "@${target}" google.com A > "$temp_output" 2>&1 || true
+      run_with_timeout dig +tcp "@${target}" google.com A > "$temp_output" 2>&1 || true
     else
-      dig "@${target}" google.com A > "$temp_output" 2>&1 || true
+      run_with_timeout dig "@${target}" google.com A > "$temp_output" 2>&1 || true
     fi
     if grep -Eq 'flags:.*[[:space:]]ra[;[:space:]]' "$temp_output"; then
       if [[ "$NO_UDP" == true ]]; then
@@ -395,7 +395,7 @@ run_ike_weak_encryption_check() {
 
     printf '\n%sChecking For IKE VPN Peer Weak Encryption:%s %s:%s\n' "$CLR_CYAN" "$CLR_RESET" "$target" "$port"
     temp_output="$(mktemp "${TMPDIR:-/tmp}/bident_check.XXXXXX")"
-    ike-scan -M "$target" > "$temp_output" 2>&1 || true
+    run_with_timeout ike-scan -M "$target" > "$temp_output" 2>&1 || true
 
     if grep -Eiq '(^|[^A-Za-z0-9])(3des|des|md5|sha-?1|group[[:space:]]*1|group[[:space:]]*2|modp768|modp1024)([^A-Za-z0-9]|$)' "$temp_output"; then
       append_command_header "$outfile" ike-scan -M "$target"
