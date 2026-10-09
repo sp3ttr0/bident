@@ -239,7 +239,7 @@ main() {
   fi
   
   target_count="$(wc -l < "$TARGETS_FILE" | tr -d '[:space:]')"
-  printf '\n%sTotal Hosts/IPs To Scan:%s %s\n' "$CLR_GREEN" "$CLR_RESET" "$target_count"
+  printf '%sTotal Hosts/IPs To Scan:%s %s\n' "$CLR_GREEN" "$CLR_RESET" "$target_count"
   printf '%sScoped Targets File:%s %s\n' "$CLR_CYAN" "$CLR_RESET" "$TARGETS_FILE"
   
   if [[ -n "$RESUME_DIR" && -s "$LIVE_TARGETS_FILE" ]]; then
@@ -260,7 +260,7 @@ main() {
   fi
   
   if [[ ! -s "$LIVE_TARGETS_FILE" ]]; then
-    printf '\n%sNo Live Hosts/IPs Was Found.%s\n' "$CLR_YELLOW" "$CLR_RESET"
+    printf '%sNo Live Hosts/IPs Was Found.%s\n' "$CLR_YELLOW" "$CLR_RESET"
     printf '%sLive Targets File:%s %s\n' "$CLR_CYAN" "$CLR_RESET" "$LIVE_TARGETS_FILE"
     printf '%sNothing More To Scan. Exiting.%s\n' "$CLR_YELLOW" "$CLR_RESET"
     printf '%sScan Completed.%s\n' "$CLR_GREEN" "$CLR_RESET"
@@ -268,7 +268,7 @@ main() {
   fi
   
   live_target_count="$(wc -l < "$LIVE_TARGETS_FILE" | tr -d '[:space:]')"
-  printf '\n%sTotal Live Hosts/IPs:%s %s\n' "$CLR_GREEN" "$CLR_RESET" "$live_target_count"
+  printf '%sTotal Live Hosts/IPs:%s %s\n' "$CLR_GREEN" "$CLR_RESET" "$live_target_count"
   printf '%sLive Targets File:%s %s\n' "$CLR_CYAN" "$CLR_RESET" "$LIVE_TARGETS_FILE"
   printf '%sLive Hosts/IPs:%s\n' "$CLR_CYAN" "$CLR_RESET"
   awk '{print "  " $0}' "$LIVE_TARGETS_FILE"
@@ -324,21 +324,21 @@ main() {
       esac
     done
     
-    printf '\n%sBase Scan Sessions Were Launched.%s\n' "$CLR_GREEN" "$CLR_RESET"
-    printf '\n%sUseful Monitor Commands:%s\n' "$CLR_CYAN" "$CLR_RESET"
+    printf '%sBase Scan Sessions Were Launched.%s\n' "$CLR_GREEN" "$CLR_RESET"
+    printf '%sUseful Monitor Commands:%s\n' "$CLR_CYAN" "$CLR_RESET"
     printf '  sudo screen -ls\n'
     for session_name in "${START_SCAN_SESSIONS[@]}"; do
       printf '  sudo screen -r %s\n' "$session_name"
     done
-    printf '\n%sScreen Logs:%s %s/*.screen.log\n' "$CLR_CYAN" "$CLR_RESET" "$LOG_DIR"
+    printf '%sScreen Logs:%s %s/*.screen.log\n' "$CLR_CYAN" "$CLR_RESET" "$LOG_DIR"
     if [[ "$RUN_RESPONDER" == true ]]; then
       printf '  sudo screen -r responder\n'
     fi
-    printf '\n%sDetach From A Screen Session With:%s Ctrl-a Then d\n' "$CLR_CYAN" "$CLR_RESET"
+    printf '%sDetach From A Screen Session With:%s Ctrl-a Then d\n' "$CLR_CYAN" "$CLR_RESET"
     
     wait_for_screen_scans "${START_SCAN_SESSIONS[@]}"
   else
-    printf '\n%sAll Base Scan Outputs Found:%s Skipping Base Scan Stage.\n' "$CLR_GREEN" "$CLR_RESET"
+    printf '%sAll Base Scan Outputs Found:%s Skipping Base Scan Stage.\n' "$CLR_GREEN" "$CLR_RESET"
   fi
   
   for base_output in "${BASE_SCAN_OUTPUTS[@]}"; do
@@ -347,7 +347,7 @@ main() {
   
   generate_open_port_reports
   
-  printf '\n%sBase Scans Finished:%s Starting Port Scanning and Vulnerability Scanning...\n' "$CLR_GREEN" "$CLR_RESET"
+  printf '%sBase Scans Finished:%s Starting Port Scanning and Vulnerability Scanning...\n' "$CLR_GREEN" "$CLR_RESET"
   
   run_if_open "FTP NSE" tcp "21" \
     nmap -n -sV "-${TIMING}" --script 'ftp-*' -p 21 -oN ${NSE_DIR}/s_ftp.txt -iL "$LIVE_TARGETS_FILE" --open
@@ -457,7 +457,7 @@ main() {
     nmap -n -sV "-${TIMING}" --script 'vnc-*' -p 5800,5801,5900,5901 -oN ${NSE_DIR}/s_vnc.txt -iL "$LIVE_TARGETS_FILE" --open
 
   if [[ "$NO_MSF" == true ]]; then
-    printf '\n%sSkipping Metasploit Auxiliary Checks:%s --no-msf Enabled\n' "$CLR_YELLOW" "$CLR_RESET"
+    printf '%sSkipping Metasploit Auxiliary Checks:%s --no-msf Enabled\n' "$CLR_YELLOW" "$CLR_RESET"
   else
     run_msf_auxiliary_checks
   fi

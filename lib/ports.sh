@@ -266,7 +266,7 @@ generate_open_port_reports() {
 
   generate_services_report
 
-  printf '\n%sWrote Open-Port Reports Under:%s %s/\n' "$CLR_GREEN" "$CLR_RESET" "$report_dir"
+  printf '%sWrote Open-Port Reports Under:%s %s/\n' "$CLR_GREEN" "$CLR_RESET" "$report_dir"
   printf '%sWrote Target/Port Table:%s %s\n' "$CLR_GREEN" "$CLR_RESET" "$report_tsv"
   printf '%sWrote Grouped Target Summary:%s %s\n' "$CLR_GREEN" "$CLR_RESET" "$report_txt"
   printf '%sWrote Per-Port Target Lists Under:%s %s/\n' "$CLR_GREEN" "$CLR_RESET" "$report_dir"

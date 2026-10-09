@@ -77,7 +77,7 @@ wait_for_screen_scans() {
   local previous_status=""
   local i
 
-  printf '\n%sWaiting For Base Scan Sessions To Finish...%s\n' "$CLR_CYAN" "$CLR_RESET"
+  printf '%sWaiting For Base Scan Sessions To Finish...%s\n' "$CLR_CYAN" "$CLR_RESET"
   while :; do
     running=()
     for session_name in "$@"; do

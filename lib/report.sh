@@ -1016,5 +1016,5 @@ HTML
 HTML
   } >> "$report_file"
 
-  printf '\n%sWrote HTML Report:%s %s\n' "$CLR_GREEN" "$CLR_RESET" "$report_file"
+  printf '%sWrote HTML Report:%s %s\n' "$CLR_GREEN" "$CLR_RESET" "$report_file"
 }

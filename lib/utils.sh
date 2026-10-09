@@ -91,7 +91,7 @@ print_final_summary() {
     msf_files="$(count_files_in_dir "$MSF_RESULT_DIR")"
   fi
 
-  printf '\n%sScan Summary%s\n' "$CLR_BOLD" "$CLR_RESET"
+  printf '%sScan Summary%s\n' "$CLR_BOLD" "$CLR_RESET"
   printf '%sResults Folder:%s %s\n' "$CLR_CYAN" "$CLR_RESET" "$PWD"
   printf '%sScoped Hosts:%s %s\n' "$CLR_CYAN" "$CLR_RESET" "$scoped_hosts"
   printf '%sLive Hosts/IPs:%s %s\n' "$CLR_CYAN" "$CLR_RESET" "$live_hosts"
@@ -101,5 +101,4 @@ print_final_summary() {
   printf '%sMetasploit Result Files:%s %s\n' "$CLR_CYAN" "$CLR_RESET" "$msf_files"
   [[ -f report.html ]] && printf '%sHTML Report:%s report.html\n' "$CLR_CYAN" "$CLR_RESET"
   [[ -f summary.json ]] && printf '%sJSON Summary:%s summary.json\n' "$CLR_CYAN" "$CLR_RESET"
-  printf '\n'
 }

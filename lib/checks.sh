@@ -10,9 +10,9 @@ run_if_open() {
   check_label="${check_label% scan}"
 
   IFS=',' read -r -a ports <<< "$ports_csv"
-  printf '\n%sChecking %s (%s)%s\n' "$CLR_CYAN" "$check_label" "$ports_csv" "$CLR_RESET"
+  printf '%sChecking %s (%s)%s\n' "$CLR_CYAN" "$check_label" "$ports_csv" "$CLR_RESET"
   if has_open_port "$proto" "${ports[@]}"; then
-    printf '\n%sRunning %s:%s Detected Open %s Port(s): (%s)\n' "$CLR_CYAN" "$label" "$CLR_RESET" "$proto" "$ports_csv"
+    printf '%sRunning %s:%s Detected Open %s Port(s): (%s)\n' "$CLR_CYAN" "$label" "$CLR_RESET" "$proto" "$ports_csv"
     "$@"
   else
     printf '%sNo %s (%s) Found%s\n' "$CLR_YELLOW" "$check_label" "$ports_csv" "$CLR_RESET"
@@ -113,7 +113,7 @@ run_rpc_135_checks() {
   local target
   local port
 
-  printf '\n%sChecking MSRPC (135)%s\n' "$CLR_CYAN" "$CLR_RESET"
+  printf '%sChecking MSRPC (135)%s\n' "$CLR_CYAN" "$CLR_RESET"
   rm -f ${TOOL_DIR}/s_rpcdump_135.txt ${TOOL_DIR}/s_rpcclient_135.txt
 
   while read -r target port; do
@@ -121,7 +121,7 @@ run_rpc_135_checks() {
     found=true
 
     if command_available impacket-rpcdump; then
-      printf '\n%sChecking For Exposed RPC Services:%s %s:%s\n' "$CLR_CYAN" "$CLR_RESET" "$target" "$port"
+      printf '%sChecking For Exposed RPC Services:%s %s:%s\n' "$CLR_CYAN" "$CLR_RESET" "$target" "$port"
       run_logged_check "Exposed RPC Services" ${TOOL_DIR}/s_rpcdump_135.txt impacket-rpcdump -p "$port" "$target" || true
     else
       printf '%sSkipping impacket-rpcdump For %s:%s:%s Command Not Found\n' "$CLR_YELLOW" "$target" "$port" "$CLR_RESET"
@@ -152,7 +152,7 @@ run_ldapsearch_checks() {
     found=true
 
     if command_available ldapsearch; then
-      printf '\n%sChecking For LDAP Anonymous Bind:%s %s:%s\n' "$CLR_CYAN" "$CLR_RESET" "$target" "$port"
+      printf '%sChecking For LDAP Anonymous Bind:%s %s:%s\n' "$CLR_CYAN" "$CLR_RESET" "$target" "$port"
       run_logged_check "LDAP Anonymous Bind" ${TOOL_DIR}/s_ldapsearch.txt ldapsearch -x -s base -b "" "(objectClass=*)" "*" -H "ldap://${target}:${port}" || true
     else
       printf '%sSkipping ldapsearch For %s:%s:%s Command Not Found\n' "$CLR_YELLOW" "$target" "$port" "$CLR_RESET"
@@ -189,7 +189,7 @@ run_smb_external_checks() {
     return
   fi
 
-  printf '\n%sChecking For Misconfigured Server Message Block Signing%s\n' "$CLR_CYAN" "$CLR_RESET"
+  printf '%sChecking For Misconfigured Server Message Block Signing%s\n' "$CLR_CYAN" "$CLR_RESET"
   temp_output="$(mktemp "${TMPDIR:-/tmp}/bident_check.XXXXXX")"
   run_with_timeout netexec smb --gen-relay-list ${TOOL_DIR}/targets_smb.txt "$LIVE_TARGETS_FILE" 2>&1 \
     | grep 'signing:False' > "$temp_output" || true
@@ -229,7 +229,7 @@ run_ssh_audit_check() {
     return
   fi
 
-  printf '\n%sChecking For Weak SSH Ciphers%s\n' "$CLR_CYAN" "$CLR_RESET"
+  printf '%sChecking For Weak SSH Ciphers%s\n' "$CLR_CYAN" "$CLR_RESET"
   rm -f ${TOOL_DIR}/ssh-audit_results.txt
   run_logged_check "Weak SSH Ciphers" ${TOOL_DIR}/ssh-audit_results.txt ssh-audit -T "$LIVE_TARGETS_FILE" || true
 }
@@ -256,7 +256,7 @@ run_dns_dig_checks() {
   while read -r target port; do
     [[ -n "${target:-}" ]] || continue
 
-    printf '\n%sChecking For DNSSec Not Configured:%s %s:%s\n' "$CLR_CYAN" "$CLR_RESET" "$target" "$port"
+    printf '%sChecking For DNSSec Not Configured:%s %s:%s\n' "$CLR_CYAN" "$CLR_RESET" "$target" "$port"
     temp_output="$(mktemp "${TMPDIR:-/tmp}/bident_check.XXXXXX")"
     if [[ "$NO_UDP" == true ]]; then
       run_with_timeout dig +tcp +dnssec "@${target}" google.com A > "$temp_output" 2>&1 || true
@@ -345,7 +345,7 @@ run_ssl_external_checks() {
   total_targets="${#ssl_targets[@]}"
 
   if [[ "$has_testssl" == true ]]; then
-    printf '\n%sRunning testssl%s\n' "$CLR_CYAN" "$CLR_RESET"
+    printf '%sRunning testssl%s\n' "$CLR_CYAN" "$CLR_RESET"
     completed_targets=0
     print_progress_bar "testssl Progress" "$completed_targets" "$total_targets"
     for entry in "${ssl_targets[@]}"; do
@@ -393,7 +393,7 @@ run_ike_weak_encryption_check() {
     [[ -n "${target:-}" ]] || continue
     found=true
 
-    printf '\n%sChecking For IKE VPN Peer Weak Encryption:%s %s:%s\n' "$CLR_CYAN" "$CLR_RESET" "$target" "$port"
+    printf '%sChecking For IKE VPN Peer Weak Encryption:%s %s:%s\n' "$CLR_CYAN" "$CLR_RESET" "$target" "$port"
     temp_output="$(mktemp "${TMPDIR:-/tmp}/bident_check.XXXXXX")"
     run_with_timeout ike-scan -M "$target" > "$temp_output" 2>&1 || true
 
@@ -421,7 +421,7 @@ run_if_any_open() {
   shift
 
   if has_any_open_port; then
-    printf '\n%sRunning %s:%s At Least One Confirmed Open Port Was Detected\n' "$CLR_CYAN" "$label" "$CLR_RESET"
+    printf '%sRunning %s:%s At Least One Confirmed Open Port Was Detected\n' "$CLR_CYAN" "$label" "$CLR_RESET"
     "$@"
   else
     printf '%sNo %s Found%s\n' "$CLR_YELLOW" "$label" "$CLR_RESET"

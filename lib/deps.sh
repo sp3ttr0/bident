@@ -13,7 +13,7 @@ print_dependency_status() {
     fi
   done
 
-  printf '\n%sOptional Tools%s\n' "$CLR_BOLD" "$CLR_RESET"
+  printf '%sOptional Tools%s\n' "$CLR_BOLD" "$CLR_RESET"
   for tool in "${OPTIONAL_TOOLS[@]}"; do
     if command_available "$tool"; then
       printf '  %s[OK]%s %s\n' "$CLR_GREEN" "$CLR_RESET" "$tool"
@@ -23,7 +23,7 @@ print_dependency_status() {
     fi
   done
 
-  printf '\n%sMissing Core:%s %s\n' "$CLR_CYAN" "$CLR_RESET" "$missing_core"
+  printf '%sMissing Core:%s %s\n' "$CLR_CYAN" "$CLR_RESET" "$missing_core"
   printf '%sMissing Optional:%s %s\n' "$CLR_CYAN" "$CLR_RESET" "$missing_optional"
 }
 
@@ -80,7 +80,6 @@ install_dependencies() {
       ;;
   esac
 
-  printf '\n%sDependency Installation Finished.%s\n' "$CLR_GREEN" "$CLR_RESET"
-  printf '\n'
+  printf '%sDependency Installation Finished.%s\n' "$CLR_GREEN" "$CLR_RESET"
   print_dependency_status
 }

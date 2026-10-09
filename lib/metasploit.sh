@@ -164,7 +164,7 @@ run_msf_auxiliary_checks() {
     return
   fi
 
-  printf '\n%sRunning Metasploit Auxiliary Checks%s\n' "$CLR_CYAN" "$CLR_RESET"
+  printf '%sRunning Metasploit Auxiliary Checks%s\n' "$CLR_CYAN" "$CLR_RESET"
   printf '%sMetasploit Module Runs:%s %s\n' "$CLR_CYAN" "$CLR_RESET" "$module_count"
   printf '%sMetasploit Resource File:%s %s\n' "$CLR_CYAN" "$CLR_RESET" "$index_rc_file"
   print_progress_bar "Metasploit Progress" "$completed_modules" "$module_count"
@@ -172,7 +172,7 @@ run_msf_auxiliary_checks() {
   for index in "${!rc_files[@]}"; do
     rc_file="${rc_files[$index]}"
     port_module_count="${rc_module_counts[$index]}"
-    printf '\n%sRunning Metasploit Auxiliary For:%s %s (%s module(s))\n' "$CLR_CYAN" "$CLR_RESET" "${rc_labels[$index]}" "$port_module_count"
+    printf '%sRunning Metasploit Auxiliary For:%s %s (%s module(s))\n' "$CLR_CYAN" "$CLR_RESET" "${rc_labels[$index]}" "$port_module_count"
     {
       printf '\n===== %s :: %s =====\n' "$(date '+%Y-%m-%d %H:%M:%S')" "${rc_labels[$index]}"
       run_with_timeout msfconsole -q -r "$rc_file"
