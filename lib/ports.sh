@@ -131,6 +131,25 @@ open_target_ports() {
   done | awk '!seen[$1 ":" $2]++'
 }
 
+open_targets_file_for_ports() {
+  local proto="$1"
+  local ports_csv="$2"
+  local label="$3"
+  local report_dir="targets_with_open_ports/nse_targets"
+  local safe_ports
+  local outfile
+  local ports=()
+
+  mkdir -p "$report_dir"
+  safe_ports="$(printf '%s' "$ports_csv" | tr ',' '_')"
+  outfile="${report_dir}/${proto}_${safe_ports}.txt"
+
+  IFS=',' read -r -a ports <<< "$ports_csv"
+  open_target_ports "$proto" "${ports[@]}" | awk '{print $1}' | awk '!seen[$0]++' > "$outfile"
+  [[ -s "$outfile" ]] || rm -f "$outfile"
+  printf '%s' "$outfile"
+}
+
 all_open_target_ports() {
   local file
 
