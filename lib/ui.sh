@@ -36,57 +36,77 @@ usage() {
 }
 
 print_banner() {
-  local CLR_DIM=""
+  local CLR_GRAY=""
   local CLR_WHITE=""
-  local CLR_SKULL=""
-  local CLR_HANDLE=""
-  local CLR_DARK_RED=""
   local CLR_BRIGHT_RED=""
-  local CLR_SOFT_RED=""
+  local line=""
 
   if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
-    CLR_DIM="$(printf '\033[2m')"
-    CLR_WHITE="$(printf '\033[90m')"
-    CLR_SKULL="$(printf '\033[31m')"
-    CLR_HANDLE="$(printf '\033[90m')"
-    CLR_DARK_RED="$(printf '\033[2;31m')"
+    CLR_GRAY="$(printf '\033[90m')"
+    CLR_WHITE="$(printf '\033[97m')"
     CLR_BRIGHT_RED="$(printf '\033[91m')"
-    CLR_SOFT_RED="$(printf '\033[0;31m')"
   fi
 
-  banner_line() {
-    printf '%s%s%s\n' "$1" "$2" "$CLR_RESET"
+  banner_art() {
+    cat <<'BIDENT_ART'
+           "                "
+          ".                '"
+         ` ;                ?''
+          :!                [_
+         .-]               '[]
+         ^[{^              ^}]^
+         ,{)?              i]-^
+         ")((`            ^[]_'
+         `)|)] `        ''??_I
+          ?)1}l.`      ''_]_l^
+           ![]-: `    '._]-l^
+           .:!!I,.   "'?[-l`
+             ''''. "".^"^'
+                ,}rCLj}"
+               _$$$$$$$$i
+               z$$,"$j dc
+               |$$$W$$$$1
+               "]B$W8$@~,
+               "')|tt|1`"
+              ,"""}[+! """
+                  """"
+                 ,,
+BIDENT_ART
+  }
+
+  banner_colored_line() {
+    local text="$1"
+    local i=0
+    local ch=""
+
+    while [[ "$i" -lt "${#text}" ]]; do
+      ch="${text:i:1}"
+      case "$ch" in
+        '['|']'|'{'|'}'|'('|')'|'?'|'!'|'1'|'l'|'I'|'_'|'-')
+          printf '%s%s%s' "$CLR_BRIGHT_RED" "$ch" "$CLR_RESET"
+          ;;
+        '$'|'W'|'8'|'B'|'@'|'|')
+          printf '%s%s%s' "$CLR_WHITE" "$ch" "$CLR_RESET"
+          ;;
+        ' ')
+          printf ' '
+          ;;
+        *)
+          printf '%s%s%s' "$CLR_GRAY" "$ch" "$CLR_RESET"
+          ;;
+      esac
+      i=$((i + 1))
+    done
+    printf '\n'
   }
 
   printf '\n'
-  banner_line "$CLR_DIM"    "                         . . . . . . . . . . ."
-  banner_line "$CLR_DARK_RED" "                            :#*       *#:"
-  banner_line "$CLR_DARK_RED" "                           :###       ###:"
-  banner_line "$CLR_DARK_RED" "                           ####       ####"
-  banner_line "$CLR_SOFT_RED" "                          :####       ####:"
-  banner_line "$CLR_SOFT_RED" "                          #####       #####"
-  banner_line "$CLR_SOFT_RED" "                          #####:     :#####"
-  banner_line "$CLR_BRIGHT_RED" "                          #####*     *#####"
-  banner_line "$CLR_BRIGHT_RED" "                          ######     ######"
-  banner_line "$CLR_BRIGHT_RED" "                          ######*   *######"
-  banner_line "$CLR_BRIGHT_RED" "                          #######. .#######"
-  banner_line "$CLR_BRIGHT_RED" "                          *####### #######*"
-  banner_line "$CLR_SOFT_RED" "                          .###############."
-  banner_line "$CLR_SOFT_RED" "                           *#############*"
-  banner_line "$CLR_SKULL"    "                            *###########*"
-  banner_line "$CLR_SKULL"    "                             :#########:"
-  banner_line "$CLR_SKULL"    "                              *#######*"
-  banner_line "$CLR_WHITE"    "                              #########"
-  banner_line "$CLR_WHITE"    "                              #########"
-  banner_line "$CLR_HANDLE"   "                             :#########:"
-  banner_line "$CLR_HANDLE"   "                             *#########*"
-  banner_line "$CLR_DARK_RED" "                             ###########"
-  banner_line "$CLR_DARK_RED" "                             :#########:"
-  banner_line "$CLR_DIM"    "                                :::::"
-  banner_line "$CLR_DIM"    "                         . . . . . . . . . . ."
+  while IFS= read -r line; do
+    banner_colored_line "$line"
+  done < <(banner_art)
   printf '\n'
   printf '                              %s%sBident%s\n' "$CLR_BOLD" "$CLR_BRIGHT_RED" "$CLR_RESET"
-  printf '                       %s%sNetwork VAPT Toolkit%s\n' "$CLR_BOLD" "$CLR_SOFT_RED" "$CLR_RESET"
-  printf '                               %sby sp3ttr0%s\n' "$CLR_HANDLE" "$CLR_RESET"
+  printf '                       %s%sNetwork VAPT Toolkit%s\n' "$CLR_BOLD" "$CLR_BRIGHT_RED" "$CLR_RESET"
+  printf '                               %sby sp3ttr0%s\n' "$CLR_GRAY" "$CLR_RESET"
   printf '\n'
 }
