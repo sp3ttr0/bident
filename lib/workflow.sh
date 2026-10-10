@@ -44,6 +44,26 @@ main() {
         TOOL_TIMEOUT="$2"
         shift 2
         ;;
+      --msf-timeout)
+        [[ -n "${2:-}" ]] || die "--msf-timeout requires seconds"
+        case "$2" in
+          ''|*[!0-9]*)
+            die "--msf-timeout must be a non-negative integer"
+            ;;
+        esac
+        MSF_TIMEOUT="$2"
+        shift 2
+        ;;
+      --msf-threads)
+        [[ -n "${2:-}" ]] || die "--msf-threads requires a positive integer"
+        case "$2" in
+          ''|*[!0-9]*|0)
+            die "--msf-threads must be a positive integer"
+            ;;
+        esac
+        MSF_THREADS="$2"
+        shift 2
+        ;;
       --responder)
         RUN_RESPONDER=true
         shift
@@ -153,6 +173,18 @@ main() {
       ;;
   esac
   
+  case "$MSF_TIMEOUT" in
+    ''|*[!0-9]*)
+      die "Invalid Metasploit timeout: $MSF_TIMEOUT. Use a non-negative integer"
+      ;;
+  esac
+  
+  case "$MSF_THREADS" in
+    ''|*[!0-9]*|0)
+      die "Invalid Metasploit threads: $MSF_THREADS. Use a positive integer"
+      ;;
+  esac
+  
   print_banner
   printf '%sTiming Template:%s -%s\n' "$CLR_CYAN" "$CLR_RESET" "$TIMING"
   if [[ "$TOOL_TIMEOUT" -gt 0 ]]; then
@@ -160,6 +192,16 @@ main() {
       printf '%sTool Timeout:%s %s seconds\n' "$CLR_CYAN" "$CLR_RESET" "$TOOL_TIMEOUT"
     else
       printf '%sTool Timeout:%s Disabled because timeout command was not found\n' "$CLR_YELLOW" "$CLR_RESET"
+    fi
+  fi
+  if [[ "$NO_MSF" != true ]]; then
+    printf '%sMetasploit Threads:%s %s\n' "$CLR_CYAN" "$CLR_RESET" "$MSF_THREADS"
+    if [[ "$MSF_TIMEOUT" -gt 0 ]]; then
+      if command_available timeout; then
+        printf '%sMetasploit Timeout:%s %s seconds per port group\n' "$CLR_CYAN" "$CLR_RESET" "$MSF_TIMEOUT"
+      else
+        printf '%sMetasploit Timeout:%s Disabled because timeout command was not found\n' "$CLR_YELLOW" "$CLR_RESET"
+      fi
     fi
   fi
   

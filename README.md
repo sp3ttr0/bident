@@ -77,6 +77,8 @@ sudo ./bident.sh (-f <scope-file> | -t <target> | --resume <results-dir>) [-o <r
 --check-deps      Show installed and missing tools.
 --install-deps    Install supported dependencies from Kali/Parrot apt repos.
 --no-msf          Skip Metasploit auxiliary checks.
+--msf-timeout N   Timeout for each Metasploit port group, in seconds. Default: 300.
+--msf-threads N   THREADS value for Metasploit scanner modules. Default: 16.
 --no-udp          Skip UDP scans and UDP follow-up checks.
 --responder       Start Responder on eth0 in a separate screen session.
 --tool-timeout N  Timeout for external tools, in seconds. Default: disabled.
@@ -103,6 +105,12 @@ Run without Metasploit and cap external tool runtime at 300 seconds:
 
 ```bash
 sudo ./bident.sh -f scope.txt --no-msf --tool-timeout 300
+```
+
+Tune Metasploit scanner speed and per-port runtime:
+
+```bash
+sudo ./bident.sh -f scope.txt --msf-threads 24 --msf-timeout 180
 ```
 
 Scan a single target and skip UDP:

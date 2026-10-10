@@ -31,6 +31,7 @@ msf_append_module() {
     printf 'use %s\n' "$module"
     printf 'set RHOSTS file:%s\n' "$(msf_absolute_path "$targets_file")"
     printf 'set RPORT %s\n' "$port"
+    printf 'set THREADS %s\n' "$MSF_THREADS"
     if [[ "$ssl_mode" == true ]]; then
       printf 'set SSL true\n'
     fi
@@ -116,6 +117,7 @@ run_msf_auxiliary_checks() {
   local rc_labels=()
   local rc_module_counts=()
   local index=0
+  local status=0
 
   if [[ ! -s "$open_tsv" ]]; then
     return
@@ -166,6 +168,14 @@ run_msf_auxiliary_checks() {
 
   printf '%sRunning Metasploit Auxiliary Checks%s\n' "$CLR_CYAN" "$CLR_RESET"
   printf '%sMetasploit Module Runs:%s %s\n' "$CLR_CYAN" "$CLR_RESET" "$module_count"
+  printf '%sMetasploit Threads:%s %s\n' "$CLR_CYAN" "$CLR_RESET" "$MSF_THREADS"
+  if [[ "$MSF_TIMEOUT" -gt 0 ]]; then
+    if command_available timeout; then
+      printf '%sMetasploit Timeout:%s %s seconds per port group\n' "$CLR_CYAN" "$CLR_RESET" "$MSF_TIMEOUT"
+    else
+      printf '%sMetasploit Timeout:%s Disabled because timeout command was not found\n' "$CLR_YELLOW" "$CLR_RESET"
+    fi
+  fi
   printf '%sMetasploit Resource File:%s %s\n' "$CLR_CYAN" "$CLR_RESET" "$index_rc_file"
   print_progress_bar "Metasploit Progress" "$completed_modules" "$module_count"
 
@@ -173,10 +183,18 @@ run_msf_auxiliary_checks() {
     rc_file="${rc_files[$index]}"
     port_module_count="${rc_module_counts[$index]}"
     printf '%sRunning Metasploit Auxiliary For:%s %s (%s module(s))\n' "$CLR_CYAN" "$CLR_RESET" "${rc_labels[$index]}" "$port_module_count"
+    status=0
     {
       printf '\n===== %s :: %s =====\n' "$(date '+%Y-%m-%d %H:%M:%S')" "${rc_labels[$index]}"
-      run_with_timeout msfconsole -q -r "$rc_file"
-    } >> "${MSF_DIR}/msfconsole.log" 2>&1 || true
+      if [[ "${MSF_TIMEOUT:-0}" =~ ^[0-9]+$ && "${MSF_TIMEOUT:-0}" -gt 0 ]] && command_available timeout; then
+        timeout --preserve-status "$MSF_TIMEOUT" msfconsole -q -r "$rc_file"
+      else
+        msfconsole -q -r "$rc_file"
+      fi
+    } >> "${MSF_DIR}/msfconsole.log" 2>&1 || status=$?
+    if [[ "$status" -ne 0 ]]; then
+      printf '%sMetasploit Auxiliary For %s Finished With Status:%s %s\n' "$CLR_YELLOW" "${rc_labels[$index]}" "$CLR_RESET" "$status"
+    fi
     completed_modules=$((completed_modules + port_module_count))
     print_progress_bar "Metasploit Progress" "$completed_modules" "$module_count"
   done
