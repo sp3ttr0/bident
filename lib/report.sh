@@ -240,6 +240,18 @@ normalize_service_name() {
     ssl\|http|ssl/http|https)
       printf 'HTTPS'
       ;;
+    ssh)
+      printf 'SSH'
+      ;;
+    ftp)
+      printf 'FTP'
+      ;;
+    smtp)
+      printf 'SMTP'
+      ;;
+    dns|domain)
+      printf 'DNS'
+      ;;
     ms-sql*|mssql*)
       printf 'MSSQL'
       ;;

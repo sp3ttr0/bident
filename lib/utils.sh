@@ -11,6 +11,31 @@ command_available() {
   command -v "$1" >/dev/null 2>&1
 }
 
+resolve_command() {
+  local command_name="$1"
+  local candidate
+
+  if command -v "$command_name" >/dev/null 2>&1; then
+    command -v "$command_name"
+    return 0
+  fi
+
+  for candidate in \
+    "/usr/local/bin/${command_name}" \
+    "/opt/homebrew/bin/${command_name}" \
+    "/usr/bin/${command_name}" \
+    "/bin/${command_name}" \
+    "/usr/sbin/${command_name}" \
+    "/sbin/${command_name}"; do
+    if [[ -x "$candidate" ]]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
 run_with_timeout() {
   if [[ "${TOOL_TIMEOUT:-0}" =~ ^[0-9]+$ && "${TOOL_TIMEOUT:-0}" -gt 0 ]] && command_available timeout; then
     timeout --preserve-status "${TOOL_TIMEOUT}" "$@"
@@ -54,10 +79,25 @@ print_progress_bar() {
 
 require_root() {
   if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
-    printf '%sRun This Script With Sudo:%s\n' "$CLR_YELLOW" "$CLR_RESET" >&2
-    printf '  sudo ./bident.sh -f <scope-file>\n' >&2
+    printf '%sRun This Command With Sudo:%s\n' "$CLR_YELLOW" "$CLR_RESET" >&2
+    printf '  sudo ./bident.sh --install-deps\n' >&2
     exit 1
   fi
+}
+
+require_non_root_scan_run() {
+  if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+    printf '%sRun Bident Without Sudo:%s\n' "$CLR_YELLOW" "$CLR_RESET" >&2
+    printf '  ./bident.sh -f <scope-file>\n' >&2
+    printf '%sBident Will Use Sudo Only For Privileged Scans.%s\n' "$CLR_YELLOW" "$CLR_RESET" >&2
+    exit 1
+  fi
+}
+
+require_sudo_for_privileged_scans() {
+  need_command "$SUDO_CMD"
+  printf '%sPreparing Sudo For Privileged Scans Only%s\n' "$CLR_CYAN" "$CLR_RESET"
+  "$SUDO_CMD" -v || die "Sudo authentication failed"
 }
 
 count_files_in_dir() {

@@ -47,7 +47,7 @@ start_screen_scan() {
 }
 
 start_responder() {
-  screen -dmS responder bash -lc "responder -I ${RESPONDER_INTERFACE} -dwv"
+  screen -dmS responder bash -lc "${SUDO_CMD} responder -I ${RESPONDER_INTERFACE} -dwv"
   printf '%sStarted Screen Session:%s responder\n' "$CLR_GREEN" "$CLR_RESET"
   printf '%sResponder Interface:%s %s\n' "$CLR_CYAN" "$CLR_RESET" "$RESPONDER_INTERFACE"
   printf '%sResponder Will Continue Running After Bident Finishes.%s\n' "$CLR_YELLOW" "$CLR_RESET"

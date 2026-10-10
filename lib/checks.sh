@@ -224,6 +224,7 @@ run_ssh_audit_check() {
   local targets_file
   local target
   local temp_output
+  local ssh_audit_cmd
   local finding_found=false
   local total_targets=0
   local completed_targets=0
@@ -232,8 +233,9 @@ run_ssh_audit_check() {
     return
   fi
 
-  if ! command_available ssh-audit; then
+  if ! ssh_audit_cmd="$(resolve_command ssh-audit)"; then
     printf '%sSkipping ssh-audit:%s Command Not Found\n' "$CLR_YELLOW" "$CLR_RESET"
+    printf '%sTip:%s If ssh-audit works in your shell but not with sudo, use sudo -E or add it to sudo secure_path.\n' "$CLR_YELLOW" "$CLR_RESET"
     return
   fi
 
@@ -251,10 +253,10 @@ run_ssh_audit_check() {
   while IFS= read -r target; do
     [[ -n "${target:-}" ]] || continue
     temp_output="$(mktemp "${TMPDIR:-/tmp}/bident_check.XXXXXX")"
-    run_with_timeout ssh-audit "$target" > "$temp_output" 2>&1 || true
+    run_with_timeout "$ssh_audit_cmd" "$target" > "$temp_output" 2>&1 || true
     if result_output_has_finding "Weak SSH Ciphers" "$temp_output"; then
       finding_found=true
-      append_command_header ${TOOL_DIR}/ssh-audit_results.txt ssh-audit "$target"
+      append_command_header ${TOOL_DIR}/ssh-audit_results.txt "$ssh_audit_cmd" "$target"
       cat "$temp_output" >> ${TOOL_DIR}/ssh-audit_results.txt
     fi
     rm -f "$temp_output"

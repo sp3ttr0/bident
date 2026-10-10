@@ -38,7 +38,7 @@ chmod +x bident.sh
 Check what is already installed:
 
 ```bash
-sudo ./bident.sh --check-deps
+./bident.sh --check-deps
 ```
 
 Install supported dependencies automatically:
@@ -58,8 +58,10 @@ nmap screen dnsutils ldap-utils smbclient samba-common-bin sslscan ike-scan ssh-
 ## Usage
 
 ```bash
-sudo ./bident.sh (-f <scope-file> | -t <target> | --resume <results-dir>) [-o <results-dir>] [options] ...
+./bident.sh (-f <scope-file> | -t <target> | --resume <results-dir>) [-o <results-dir>] [options] ...
 ```
+
+Run Bident as a normal user. It prompts for sudo only when privileged scans require it.
 
 ### Target Input
 
@@ -76,6 +78,7 @@ sudo ./bident.sh (-f <scope-file> | -t <target> | --resume <results-dir>) [-o <r
 -p-               Scan all TCP/UDP ports.
 --check-deps      Show installed and missing tools.
 --install-deps    Install supported dependencies from Kali/Parrot apt repos.
+                  Package installation may require sudo.
 --no-msf          Skip Metasploit auxiliary checks.
 --msf-timeout N   Timeout for each Metasploit port group, in seconds. Default: 300.
 --msf-threads N   THREADS value for Metasploit scanner modules. Default: 16.
@@ -92,43 +95,43 @@ sudo ./bident.sh (-f <scope-file> | -t <target> | --resume <results-dir>) [-o <r
 Scan a scope file using default ports:
 
 ```bash
-sudo ./bident.sh -f scope.txt
+./bident.sh -f scope.txt
 ```
 
 Scan all ports with Nmap timing `-T4`:
 
 ```bash
-sudo ./bident.sh -f scope.txt -p- -T4
+./bident.sh -f scope.txt -p- -T4
 ```
 
 Run without Metasploit and cap external tool runtime at 300 seconds:
 
 ```bash
-sudo ./bident.sh -f scope.txt --no-msf --tool-timeout 300
+./bident.sh -f scope.txt --no-msf --tool-timeout 300
 ```
 
 Tune Metasploit scanner speed and per-port runtime:
 
 ```bash
-sudo ./bident.sh -f scope.txt --msf-threads 24 --msf-timeout 180
+./bident.sh -f scope.txt --msf-threads 24 --msf-timeout 180
 ```
 
 Scan a single target and skip UDP:
 
 ```bash
-sudo ./bident.sh -t 192.0.2.10 --no-udp -T4
+./bident.sh -t 192.0.2.10 --no-udp -T4
 ```
 
 Write results to a custom folder:
 
 ```bash
-sudo ./bident.sh -f scope.txt -o client_scan_results -p-
+./bident.sh -f scope.txt -o client_scan_results -p-
 ```
 
 Resume from an existing results folder:
 
 ```bash
-sudo ./bident.sh --resume bident_results_20260928_120000
+./bident.sh --resume bident_results_20260928_120000
 ```
 
 ## Output Layout
