@@ -1,6 +1,7 @@
 usage() {
   printf '%s\n' \
     'Usage: ./bident.sh (-f <scope-file> | -t <target> | --resume <results-dir>) [-o <results-dir>] [-p-] [--no-udp] [--no-msf] [--tool-timeout N] [--msf-timeout N] [--msf-threads N] [--responder] [-T1|-T2|-T3|-T4|-T5]' \
+    '       sudo ./bident.sh (-f <scope-file> | -t <target> | --resume <results-dir>) [-o <results-dir>] [options] ...' \
     '       ./bident.sh --check-deps' \
     '       sudo ./bident.sh --install-deps' \
     '' \
@@ -31,6 +32,7 @@ usage() {
     '' \
     'Examples:' \
     '  ./bident.sh -f scope.txt -p- -T4' \
+    '  sudo ./bident.sh -f scope.txt -p- -T4' \
     '  ./bident.sh -f scope.txt --msf-timeout 180 --msf-threads 24' \
     '  ./bident.sh -f scope.txt --no-msf --tool-timeout 300' \
     '  ./bident.sh -t 192.0.2.10 --no-udp -T4' \

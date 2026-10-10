@@ -221,8 +221,7 @@ main() {
     need_command responder
   fi
   
-  require_non_root_scan_run
-  require_sudo_for_privileged_scans
+  prepare_privileged_execution
   trap confirm_cancel INT
   
   if [[ -n "$RESUME_DIR" ]]; then
@@ -261,6 +260,7 @@ main() {
     SCOPE_FILE="$SCOPE_BASENAME"
   fi
   mkdir -p "$SCAN_DIR" "$NSE_DIR" "$TOOL_DIR" "$LOG_DIR"
+  allow_unprivileged_output_writes
   
   if [[ "$RUN_RESPONDER" == true ]]; then
     ensure_screen_sessions_available responder
@@ -355,7 +355,7 @@ main() {
       case "$session_name" in
         syn)
           start_screen_scan "syn" \
-            "${SUDO_CMD} nmap -sV -sS -v --reason ${PORT_FLAG} --host-timeout ${HOST_TIMEOUT} --min-rate ${MIN_RATE} -${TIMING} -oA ${SCAN_DIR}/syn -iL ${LIVE_TARGETS_FILE} --open"
+            "${PRIVILEGED_CMD_PREFIX} nmap -sV -sS -v --reason ${PORT_FLAG} --host-timeout ${HOST_TIMEOUT} --min-rate ${MIN_RATE} -${TIMING} -oA ${SCAN_DIR}/syn -iL ${LIVE_TARGETS_FILE} --open"
           ;;
         con)
           start_screen_scan "con" \
@@ -363,7 +363,7 @@ main() {
           ;;
         udp)
           start_screen_scan "udp" \
-            "${SUDO_CMD} nmap -n -sUV --version-intensity 1 -v --reason --max-rtt-timeout=100ms --max-retries=0 --host-timeout ${HOST_TIMEOUT} --min-rate ${MIN_RATE} -${TIMING} ${PORT_FLAG} -oA ${SCAN_DIR}/udp -iL ${LIVE_TARGETS_FILE} --open"
+            "${PRIVILEGED_CMD_PREFIX} nmap -n -sUV --version-intensity 1 -v --reason --max-rtt-timeout=100ms --max-retries=0 --host-timeout ${HOST_TIMEOUT} --min-rate ${MIN_RATE} -${TIMING} ${PORT_FLAG} -oA ${SCAN_DIR}/udp -iL ${LIVE_TARGETS_FILE} --open"
           ;;
       esac
     done
@@ -409,10 +409,10 @@ main() {
   
   if [[ "$NO_UDP" == true ]]; then
     run_if_open "DNS NSE" tcp "53" \
-      "$SUDO_CMD" nmap -n -sS -sV "-${TIMING}" --host-timeout "$NSE_HOST_TIMEOUT" --min-rate "$NSE_MIN_RATE" --script '(default and *dns*) or fcrdns or dns-srv-enum or dns-random-txid or dns-random-srcport' -p 53 -oN ${NSE_DIR}/s_dns.txt -iL "$(open_targets_file_for_ports tcp 53 dns)" --open
+      run_privileged nmap -n -sS -sV "-${TIMING}" --host-timeout "$NSE_HOST_TIMEOUT" --min-rate "$NSE_MIN_RATE" --script '(default and *dns*) or fcrdns or dns-srv-enum or dns-random-txid or dns-random-srcport' -p 53 -oN ${NSE_DIR}/s_dns.txt -iL "$(open_targets_file_for_ports tcp 53 dns)" --open
   else
     run_if_open "DNS NSE" any "53" \
-      "$SUDO_CMD" nmap -n -sS -sU -sV "-${TIMING}" --host-timeout "$NSE_HOST_TIMEOUT" --min-rate "$NSE_MIN_RATE" --script '(default and *dns*) or fcrdns or dns-srv-enum or dns-random-txid or dns-random-srcport' -p 53 -oN ${NSE_DIR}/s_dns.txt -iL "$(open_targets_file_for_ports any 53 dns)" --open
+      run_privileged nmap -n -sS -sU -sV "-${TIMING}" --host-timeout "$NSE_HOST_TIMEOUT" --min-rate "$NSE_MIN_RATE" --script '(default and *dns*) or fcrdns or dns-srv-enum or dns-random-txid or dns-random-srcport' -p 53 -oN ${NSE_DIR}/s_dns.txt -iL "$(open_targets_file_for_ports any 53 dns)" --open
   fi
   
   run_dns_dig_checks
@@ -436,22 +436,22 @@ main() {
   
   if [[ "$NO_UDP" == true ]]; then
     run_if_open "RPCBind NSE" tcp "111" \
-      "$SUDO_CMD" nmap -n -sV -sS "-${TIMING}" --host-timeout "$NSE_HOST_TIMEOUT" --min-rate "$NSE_MIN_RATE" -p 111 -oN ${NSE_DIR}/s_rpcbind.txt -iL "$(open_targets_file_for_ports tcp 111 rpcbind)" --open
+      run_privileged nmap -n -sV -sS "-${TIMING}" --host-timeout "$NSE_HOST_TIMEOUT" --min-rate "$NSE_MIN_RATE" -p 111 -oN ${NSE_DIR}/s_rpcbind.txt -iL "$(open_targets_file_for_ports tcp 111 rpcbind)" --open
   else
     run_if_open "RPCBind NSE" any "111" \
-      "$SUDO_CMD" nmap -n -sV -sSUC "-${TIMING}" --host-timeout "$NSE_HOST_TIMEOUT" --min-rate "$NSE_MIN_RATE" -p 111 -oN ${NSE_DIR}/s_rpcbind.txt -iL "$(open_targets_file_for_ports any 111 rpcbind)" --open
+      run_privileged nmap -n -sV -sSUC "-${TIMING}" --host-timeout "$NSE_HOST_TIMEOUT" --min-rate "$NSE_MIN_RATE" -p 111 -oN ${NSE_DIR}/s_rpcbind.txt -iL "$(open_targets_file_for_ports any 111 rpcbind)" --open
   fi
   
   if [[ "$NO_UDP" != true ]]; then
     run_if_open "NTP NSE" udp "123" \
-      "$SUDO_CMD" nmap -n -sU -sV "-${TIMING}" --host-timeout "$NSE_HOST_TIMEOUT" --min-rate "$NSE_MIN_RATE" --script 'ntp* and (discovery or vuln) and not (dos or brute)' -p 123 -oN ${NSE_DIR}/s_ntp.txt -iL "$(open_targets_file_for_ports udp 123 ntp)" --open
+      run_privileged nmap -n -sU -sV "-${TIMING}" --host-timeout "$NSE_HOST_TIMEOUT" --min-rate "$NSE_MIN_RATE" --script 'ntp* and (discovery or vuln) and not (dos or brute)' -p 123 -oN ${NSE_DIR}/s_ntp.txt -iL "$(open_targets_file_for_ports udp 123 ntp)" --open
   fi
   
   run_rpc_135_checks
   
   if [[ "$NO_UDP" != true ]]; then
     run_if_open "NetBIOS NSE" udp "137" \
-      "$SUDO_CMD" nmap -n -sU -sV "-${TIMING}" --host-timeout "$NSE_HOST_TIMEOUT" --min-rate "$NSE_MIN_RATE" --script nbstat -p 137 -oN ${NSE_DIR}/s_netbios.txt -iL "$(open_targets_file_for_ports udp 137 netbios)" --open
+      run_privileged nmap -n -sU -sV "-${TIMING}" --host-timeout "$NSE_HOST_TIMEOUT" --min-rate "$NSE_MIN_RATE" --script nbstat -p 137 -oN ${NSE_DIR}/s_netbios.txt -iL "$(open_targets_file_for_ports udp 137 netbios)" --open
   fi
   
   run_if_open "SMB NSE" tcp "139,445" \
@@ -461,7 +461,7 @@ main() {
   
   if [[ "$NO_UDP" != true ]]; then
     run_if_open "SNMP NSE" udp "161,162" \
-      "$SUDO_CMD" nmap -n -sUV "-${TIMING}" --host-timeout "$NSE_HOST_TIMEOUT" --min-rate "$NSE_MIN_RATE" --script 'snmp-*' -p 161,162 -oN ${NSE_DIR}/s_snmp.txt -iL "$(open_targets_file_for_ports udp 161,162 snmp)" --open
+      run_privileged nmap -n -sUV "-${TIMING}" --host-timeout "$NSE_HOST_TIMEOUT" --min-rate "$NSE_MIN_RATE" --script 'snmp-*' -p 161,162 -oN ${NSE_DIR}/s_snmp.txt -iL "$(open_targets_file_for_ports udp 161,162 snmp)" --open
   fi
   
   run_if_open "LDAP NSE" tcp "389,636,3268,3269" \
@@ -471,12 +471,12 @@ main() {
   
   if [[ "$NO_UDP" != true ]]; then
     run_if_open "IKE scan" udp "500" \
-      "$SUDO_CMD" nmap -n -sUV "-${TIMING}" --host-timeout "$NSE_HOST_TIMEOUT" --min-rate "$NSE_MIN_RATE" -p 500 -oN ${NSE_DIR}/s_ike.txt -iL "$(open_targets_file_for_ports udp 500 ike)" --open
+      run_privileged nmap -n -sUV "-${TIMING}" --host-timeout "$NSE_HOST_TIMEOUT" --min-rate "$NSE_MIN_RATE" -p 500 -oN ${NSE_DIR}/s_ike.txt -iL "$(open_targets_file_for_ports udp 500 ike)" --open
   
     run_ike_weak_encryption_check
   
     run_if_open "IPMI NSE" udp "623" \
-      "$SUDO_CMD" nmap -n -sU -sV "-${TIMING}" --host-timeout "$NSE_HOST_TIMEOUT" --min-rate "$NSE_MIN_RATE" --script 'ipmi-*' -p 623 -oN ${NSE_DIR}/s_ipmi.txt -iL "$(open_targets_file_for_ports udp 623 ipmi)" --open
+      run_privileged nmap -n -sU -sV "-${TIMING}" --host-timeout "$NSE_HOST_TIMEOUT" --min-rate "$NSE_MIN_RATE" --script 'ipmi-*' -p 623 -oN ${NSE_DIR}/s_ipmi.txt -iL "$(open_targets_file_for_ports udp 623 ipmi)" --open
   fi
   
   run_if_open "MSSQL NSE" tcp "1433" \
@@ -496,7 +496,7 @@ main() {
   
   if [[ "$NO_UDP" != true ]]; then
     run_if_open "SIP NSE" udp "5060" \
-      "$SUDO_CMD" nmap -n -sU -sV "-${TIMING}" --host-timeout "$NSE_HOST_TIMEOUT" --min-rate "$NSE_MIN_RATE" --script 'sip-*' -p 5060 -oN ${NSE_DIR}/s_sip.txt -iL "$(open_targets_file_for_ports udp 5060 sip)" --open
+      run_privileged nmap -n -sU -sV "-${TIMING}" --host-timeout "$NSE_HOST_TIMEOUT" --min-rate "$NSE_MIN_RATE" --script 'sip-*' -p 5060 -oN ${NSE_DIR}/s_sip.txt -iL "$(open_targets_file_for_ports udp 5060 sip)" --open
   fi
   
   run_if_open "VNC NSE" tcp "5800,5801,5900,5901" \

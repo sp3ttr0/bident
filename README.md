@@ -59,9 +59,10 @@ nmap screen dnsutils ldap-utils smbclient samba-common-bin sslscan ike-scan ssh-
 
 ```bash
 ./bident.sh (-f <scope-file> | -t <target> | --resume <results-dir>) [-o <results-dir>] [options] ...
+sudo ./bident.sh (-f <scope-file> | -t <target> | --resume <results-dir>) [-o <results-dir>] [options] ...
 ```
 
-Run Bident as a normal user. It prompts for sudo only when privileged scans require it.
+You can run Bident as a normal user or with sudo. When launched with sudo, Bident runs privileged scans as root and drops back to the original sudo user for external tools such as `ssh-audit`.
 
 ### Target Input
 

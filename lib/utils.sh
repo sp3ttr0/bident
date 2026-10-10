@@ -11,9 +11,42 @@ command_available() {
   command -v "$1" >/dev/null 2>&1
 }
 
+command_available_for_user() {
+  local command_name="$1"
+  local user_path="$PATH"
+  local user_home=""
+
+  if [[ "$BIDENT_DROP_PRIVILEGES" == true && -n "${BIDENT_RUN_USER:-}" ]]; then
+    user_home="$(cd ~"$BIDENT_RUN_USER" 2>/dev/null && pwd || true)"
+    if [[ -n "$user_home" ]]; then
+      user_path="${user_home}/.local/bin:${user_home}/bin:${user_path}"
+    fi
+    user_path="/opt/homebrew/bin:/usr/local/bin:${user_path}"
+    "$SUDO_CMD" -H -u "$BIDENT_RUN_USER" env PATH="$user_path" bash -lc "command -v $(printf '%q' "$command_name")" >/dev/null 2>&1
+  else
+    command_available "$command_name"
+  fi
+}
+
 resolve_command() {
   local command_name="$1"
   local candidate
+  local user_path="$PATH"
+  local user_home=""
+
+  if [[ "$BIDENT_DROP_PRIVILEGES" == true && -n "${BIDENT_RUN_USER:-}" ]]; then
+    user_home="$(cd ~"$BIDENT_RUN_USER" 2>/dev/null && pwd || true)"
+    if [[ -n "$user_home" ]]; then
+      user_path="${user_home}/.local/bin:${user_home}/bin:${user_path}"
+    fi
+    user_path="/opt/homebrew/bin:/usr/local/bin:${user_path}"
+    if candidate="$("$SUDO_CMD" -H -u "$BIDENT_RUN_USER" env PATH="$user_path" bash -lc "command -v $(printf '%q' "$command_name")" 2>/dev/null)"; then
+      if [[ -n "$candidate" ]]; then
+        printf '%s\n' "$candidate"
+        return 0
+      fi
+    fi
+  fi
 
   if command -v "$command_name" >/dev/null 2>&1; then
     command -v "$command_name"
@@ -36,11 +69,47 @@ resolve_command() {
   return 1
 }
 
-run_with_timeout() {
-  if [[ "${TOOL_TIMEOUT:-0}" =~ ^[0-9]+$ && "${TOOL_TIMEOUT:-0}" -gt 0 ]] && command_available timeout; then
-    timeout --preserve-status "${TOOL_TIMEOUT}" "$@"
+run_unprivileged() {
+  local user_path="$PATH"
+  local user_home=""
+
+  if [[ "$BIDENT_DROP_PRIVILEGES" == true && -n "${BIDENT_RUN_USER:-}" ]]; then
+    user_home="$(cd ~"$BIDENT_RUN_USER" 2>/dev/null && pwd || true)"
+    if [[ -n "$user_home" ]]; then
+      user_path="${user_home}/.local/bin:${user_home}/bin:${user_path}"
+    fi
+    user_path="/opt/homebrew/bin:/usr/local/bin:${user_path}"
+    "$SUDO_CMD" -H -u "$BIDENT_RUN_USER" env PATH="$user_path" "$@"
   else
     "$@"
+  fi
+}
+
+run_privileged() {
+  if [[ -n "${PRIVILEGED_CMD_PREFIX:-}" ]]; then
+    "$SUDO_CMD" "$@"
+  else
+    "$@"
+  fi
+}
+
+run_with_timeout() {
+  if [[ "${TOOL_TIMEOUT:-0}" =~ ^[0-9]+$ && "${TOOL_TIMEOUT:-0}" -gt 0 ]] && command_available timeout; then
+    if [[ "$BIDENT_DROP_PRIVILEGES" == true && -n "${BIDENT_RUN_USER:-}" ]]; then
+      local user_path="$PATH"
+      local user_home=""
+
+      user_home="$(cd ~"$BIDENT_RUN_USER" 2>/dev/null && pwd || true)"
+      if [[ -n "$user_home" ]]; then
+        user_path="${user_home}/.local/bin:${user_home}/bin:${user_path}"
+      fi
+      user_path="/opt/homebrew/bin:/usr/local/bin:${user_path}"
+      timeout --preserve-status "${TOOL_TIMEOUT}" "$SUDO_CMD" -H -u "$BIDENT_RUN_USER" env PATH="$user_path" "$@"
+    else
+      timeout --preserve-status "${TOOL_TIMEOUT}" "$@"
+    fi
+  else
+    run_unprivileged "$@"
   fi
 }
 
@@ -85,19 +154,30 @@ require_root() {
   fi
 }
 
-require_non_root_scan_run() {
+prepare_privileged_execution() {
   if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
-    printf '%sRun Bident Without Sudo:%s\n' "$CLR_YELLOW" "$CLR_RESET" >&2
-    printf '  ./bident.sh -f <scope-file>\n' >&2
-    printf '%sBident Will Use Sudo Only For Privileged Scans.%s\n' "$CLR_YELLOW" "$CLR_RESET" >&2
-    exit 1
+    PRIVILEGED_CMD_PREFIX=""
+    if [[ -n "${SUDO_USER:-}" && "${SUDO_USER:-root}" != "root" ]]; then
+      BIDENT_DROP_PRIVILEGES=true
+      BIDENT_RUN_USER="$SUDO_USER"
+      printf '%sPrivileged Scan Mode:%s Running privileged scans as root; external tools as %s\n' "$CLR_CYAN" "$CLR_RESET" "$BIDENT_RUN_USER"
+    else
+      BIDENT_DROP_PRIVILEGES=false
+      printf '%sPrivileged Scan Mode:%s Running all commands as root because no original sudo user was detected\n' "$CLR_YELLOW" "$CLR_RESET"
+    fi
+  else
+    need_command "$SUDO_CMD"
+    PRIVILEGED_CMD_PREFIX="$SUDO_CMD"
+    BIDENT_DROP_PRIVILEGES=false
+    printf '%sPreparing Sudo For Privileged Scans Only%s\n' "$CLR_CYAN" "$CLR_RESET"
+    "$SUDO_CMD" -v || die "Sudo authentication failed"
   fi
 }
 
-require_sudo_for_privileged_scans() {
-  need_command "$SUDO_CMD"
-  printf '%sPreparing Sudo For Privileged Scans Only%s\n' "$CLR_CYAN" "$CLR_RESET"
-  "$SUDO_CMD" -v || die "Sudo authentication failed"
+allow_unprivileged_output_writes() {
+  if [[ "$BIDENT_DROP_PRIVILEGES" == true && -n "${BIDENT_RUN_USER:-}" && -n "${RESULTS_DIR:-}" && -d "$RESULTS_DIR" ]]; then
+    chown -R "$BIDENT_RUN_USER" "$RESULTS_DIR" 2>/dev/null || true
+  fi
 }
 
 count_files_in_dir() {

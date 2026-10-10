@@ -235,7 +235,7 @@ run_ssh_audit_check() {
 
   if ! ssh_audit_cmd="$(resolve_command ssh-audit)"; then
     printf '%sSkipping ssh-audit:%s Command Not Found\n' "$CLR_YELLOW" "$CLR_RESET"
-    printf '%sTip:%s If ssh-audit works in your shell but not with sudo, use sudo -E or add it to sudo secure_path.\n' "$CLR_YELLOW" "$CLR_RESET"
+    printf '%sTip:%s Install ssh-audit in a common path or in the original sudo user path.\n' "$CLR_YELLOW" "$CLR_RESET"
     return
   fi
 
