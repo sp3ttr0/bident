@@ -101,6 +101,17 @@ msf_write_targets_file() {
   ' "$open_tsv" | awk '!seen[$0]++' > "$target_file"
 }
 
+msf_print_modules_for_rc() {
+  local rc_file="$1"
+  local label="$2"
+  local module_name
+
+  while IFS= read -r module_name; do
+    [[ -n "${module_name:-}" ]] || continue
+    printf '%sRunning Metasploit Module:%s %s (%s)\n' "$CLR_CYAN" "$CLR_RESET" "$module_name" "$label"
+  done < <(awk '/^use / {print $2}' "$rc_file")
+}
+
 run_msf_auxiliary_checks() {
   local open_tsv="targets_with_open_ports/open_ports_all.tsv"
   local index_rc_file="${MSF_DIR}/metasploit_auxiliary.rc"
@@ -178,11 +189,13 @@ run_msf_auxiliary_checks() {
   fi
   printf '%sMetasploit Resource File:%s %s\n' "$CLR_CYAN" "$CLR_RESET" "$index_rc_file"
   print_progress_bar "Metasploit Progress" "$completed_modules" "$module_count"
+  [[ -t 1 ]] && printf '\n'
 
   for index in "${!rc_files[@]}"; do
     rc_file="${rc_files[$index]}"
     port_module_count="${rc_module_counts[$index]}"
     printf '%sRunning Metasploit Auxiliary For:%s %s (%s module(s))\n' "$CLR_CYAN" "$CLR_RESET" "${rc_labels[$index]}" "$port_module_count"
+    msf_print_modules_for_rc "$rc_file" "${rc_labels[$index]}"
     status=0
     {
       printf '\n===== %s :: %s =====\n' "$(date '+%Y-%m-%d %H:%M:%S')" "${rc_labels[$index]}"
