@@ -43,6 +43,7 @@ print_banner() {
   local CLR_WHITE=""
   local CLR_BRIGHT_RED=""
   local line=""
+  local banner_width=32
 
   if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
     CLR_GRAY="$(printf '\033[90m')"
@@ -103,13 +104,26 @@ BIDENT_ART
     printf '\n'
   }
 
+  banner_label_line() {
+    local color="$1"
+    local text="$2"
+    local text_length="${#text}"
+    local padding=0
+
+    if ((banner_width > text_length)); then
+      padding=$(((banner_width - text_length) / 2))
+    fi
+
+    printf '%*s%s%s%s\n' "$padding" "" "$color" "$text" "$CLR_RESET"
+  }
+
   printf '\n'
   while IFS= read -r line; do
     banner_colored_line "$line"
   done < <(banner_art)
   printf '\n'
-  printf '                              %s%sBident%s\n' "$CLR_BOLD" "$CLR_BRIGHT_RED" "$CLR_RESET"
-  printf '                       %s%sNetwork VAPT Toolkit%s\n' "$CLR_BOLD" "$CLR_BRIGHT_RED" "$CLR_RESET"
-  printf '                               %sby sp3ttr0%s\n' "$CLR_GRAY" "$CLR_RESET"
+  banner_label_line "${CLR_BOLD}${CLR_BRIGHT_RED}" "Bident"
+  banner_label_line "${CLR_BOLD}${CLR_BRIGHT_RED}" "Network VAPT Toolkit"
+  banner_label_line "$CLR_GRAY" "by sp3ttr0"
   printf '\n'
 }

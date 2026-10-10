@@ -221,6 +221,13 @@ run_smb_external_checks() {
 }
 
 run_ssh_audit_check() {
+  local targets_file
+  local target
+  local temp_output
+  local finding_found=false
+  local total_targets=0
+  local completed_targets=0
+
   if ! has_open_port tcp 22; then
     return
   fi
@@ -231,8 +238,36 @@ run_ssh_audit_check() {
   fi
 
   printf '%sChecking For Weak SSH Ciphers%s\n' "$CLR_CYAN" "$CLR_RESET"
+  targets_file="$(open_targets_file_for_ports tcp 22 ssh)"
+  if [[ ! -s "$targets_file" ]]; then
+    printf '%sNo Weak SSH Ciphers (22) Found%s\n' "$CLR_YELLOW" "$CLR_RESET"
+    return
+  fi
+
+  total_targets="$(wc -l < "$targets_file" | tr -d '[:space:]')"
   rm -f ${TOOL_DIR}/ssh-audit_results.txt
-  run_logged_check "Weak SSH Ciphers" ${TOOL_DIR}/ssh-audit_results.txt ssh-audit -T "$LIVE_TARGETS_FILE" || true
+  print_progress_bar "ssh-audit Progress" "$completed_targets" "$total_targets"
+
+  while IFS= read -r target; do
+    [[ -n "${target:-}" ]] || continue
+    temp_output="$(mktemp "${TMPDIR:-/tmp}/bident_check.XXXXXX")"
+    run_with_timeout ssh-audit "$target" > "$temp_output" 2>&1 || true
+    if result_output_has_finding "Weak SSH Ciphers" "$temp_output"; then
+      finding_found=true
+      append_command_header ${TOOL_DIR}/ssh-audit_results.txt ssh-audit "$target"
+      cat "$temp_output" >> ${TOOL_DIR}/ssh-audit_results.txt
+    fi
+    rm -f "$temp_output"
+    completed_targets=$((completed_targets + 1))
+    print_progress_bar "ssh-audit Progress" "$completed_targets" "$total_targets"
+  done < "$targets_file"
+
+  if [[ "$finding_found" == true ]]; then
+    printf '%sWeak SSH Ciphers Found%s\n' "$CLR_GREEN" "$CLR_RESET"
+  else
+    rm -f ${TOOL_DIR}/ssh-audit_results.txt
+    printf '%sNo Weak SSH Ciphers Found%s\n' "$CLR_YELLOW" "$CLR_RESET"
+  fi
 }
 
 run_dns_dig_checks() {

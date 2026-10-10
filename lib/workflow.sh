@@ -440,12 +440,14 @@ main() {
       nmap -n -sV -sSUC "-${TIMING}" --host-timeout "$NSE_HOST_TIMEOUT" --min-rate "$NSE_MIN_RATE" -p 111 -oN ${NSE_DIR}/s_rpcbind.txt -iL "$(open_targets_file_for_ports any 111 rpcbind)" --open
   fi
   
-  run_rpc_135_checks
-  
   if [[ "$NO_UDP" != true ]]; then
     run_if_open "NTP NSE" udp "123" \
       nmap -n -sU -sV "-${TIMING}" --host-timeout "$NSE_HOST_TIMEOUT" --min-rate "$NSE_MIN_RATE" --script 'ntp* and (discovery or vuln) and not (dos or brute)' -p 123 -oN ${NSE_DIR}/s_ntp.txt -iL "$(open_targets_file_for_ports udp 123 ntp)" --open
+  fi
   
+  run_rpc_135_checks
+  
+  if [[ "$NO_UDP" != true ]]; then
     run_if_open "NetBIOS NSE" udp "137" \
       nmap -n -sU -sV "-${TIMING}" --host-timeout "$NSE_HOST_TIMEOUT" --min-rate "$NSE_MIN_RATE" --script nbstat -p 137 -oN ${NSE_DIR}/s_netbios.txt -iL "$(open_targets_file_for_ports udp 137 netbios)" --open
   fi

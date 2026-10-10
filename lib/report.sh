@@ -20,6 +20,22 @@ html_escape_text() {
   '
 }
 
+title_case_acronyms() {
+  awk '{
+    for (i = 1; i <= NF; i++) {
+      lower = tolower($i)
+      if (lower == "ssh" || lower == "ftp" || lower == "smtp" || lower == "dns" ||
+          lower == "smb" || lower == "mssql" || lower == "mysql" || lower == "rdp" ||
+          lower == "vnc") {
+        $i = toupper($i)
+      } else {
+        $i = toupper(substr($i, 1, 1)) substr($i, 2)
+      }
+    }
+    print
+  }'
+}
+
 default_result_label() {
   local result_name="${1##*/}"
   local msf_name
@@ -27,7 +43,7 @@ default_result_label() {
   if [[ "$result_name" =~ ^[A-Za-z0-9_]+_(tcp|udp)_[0-9]+\.txt$ ]]; then
     msf_name="${result_name%.txt}"
     msf_name="$(printf '%s' "$msf_name" | sed -E 's/_(tcp|udp)_[0-9]+$//; s/_/ /g')"
-    printf '%s Metasploit Results' "$(printf '%s' "$msf_name" | awk '{for (i=1;i<=NF;i++) {$i=toupper(substr($i,1,1)) substr($i,2)} print}')"
+    printf '%s Metasploit Results' "$(printf '%s' "$msf_name" | title_case_acronyms)"
     return
   fi
 
@@ -698,6 +714,36 @@ generate_html_report() {
       font-family: "SFMono-Regular", Consolas, monospace;
       white-space: nowrap;
     }
+    .table-tools {
+      align-items: end;
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      margin-bottom: 12px;
+    }
+    .service-search {
+      grid-column: 1 / -1;
+    }
+    .service-filter {
+      display: grid;
+      gap: 5px;
+    }
+    .service-filter label {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+    .service-filter select,
+    .service-search {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      color: var(--text);
+      font: inherit;
+      min-width: 0;
+      padding: 10px 12px;
+    }
     li {
       break-inside: avoid;
     }
@@ -822,6 +868,10 @@ HTML
     {
       printf '  <div class="table-tools">\n'
       printf '    <input class="service-search" id="serviceSearch" type="search" placeholder="Search services..." aria-label="Search services">\n'
+      printf '    <div class="service-filter"><label for="filterHost">Hosts/IPs</label><select id="filterHost" data-column="0"><option value="">All Hosts/IPs</option></select></div>\n'
+      printf '    <div class="service-filter"><label for="filterPortProtocol">Port/Protocol</label><select id="filterPortProtocol" data-column="1"><option value="">All Port/Protocol</option></select></div>\n'
+      printf '    <div class="service-filter"><label for="filterName">Name</label><select id="filterName" data-column="2"><option value="">All Names</option></select></div>\n'
+      printf '    <div class="service-filter"><label for="filterInfo">Info</label><select id="filterInfo" data-column="3"><option value="">All Info</option></select></div>\n'
       printf '  </div>\n'
       printf '  <div class="service-table-wrap">\n'
       printf '    <table class="service-table" id="servicesTable">\n'
@@ -946,6 +996,7 @@ HTML
   if (serviceSearch && servicesTable) {
     const tableBody = servicesTable.tBodies[0];
     const rows = Array.from(tableBody.rows);
+    const serviceFilters = Array.from(document.querySelectorAll('.service-filter select'));
 
     function sortServices(column, direction) {
       const sortedRows = rows.slice().sort((a, b) => {
@@ -968,12 +1019,38 @@ HTML
       sortedRows.forEach((row) => tableBody.appendChild(row));
     }
 
-    serviceSearch.addEventListener('input', () => {
+    function filterServices() {
       const query = serviceSearch.value.trim().toLowerCase();
       rows.forEach((row) => {
-        row.style.display = row.textContent.toLowerCase().includes(query) ? '' : 'none';
+        const matchesSearch = row.textContent.toLowerCase().includes(query);
+        const matchesFilters = serviceFilters.every((filter) => {
+          if (!filter.value) {
+            return true;
+          }
+          const column = Number(filter.dataset.column);
+          return row.cells[column].textContent.trim() === filter.value;
+        });
+        row.style.display = matchesSearch && matchesFilters ? '' : 'none';
       });
-    });
+    }
+
+    function populateServiceFilters() {
+      serviceFilters.forEach((filter) => {
+        const column = Number(filter.dataset.column);
+        const values = Array.from(new Set(rows.map((row) => row.cells[column].textContent.trim()).filter(Boolean)))
+          .sort((first, second) => first.localeCompare(second, undefined, { numeric: true, sensitivity: 'base' }));
+        values.forEach((value) => {
+          const option = document.createElement('option');
+          option.value = value;
+          option.textContent = value;
+          filter.appendChild(option);
+        });
+        filter.addEventListener('change', filterServices);
+      });
+    }
+
+    serviceSearch.addEventListener('input', filterServices);
+    populateServiceFilters();
 
     servicesTable.querySelectorAll('.sort-button').forEach((button) => {
       button.addEventListener('click', () => {
