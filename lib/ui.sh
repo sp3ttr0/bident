@@ -1,7 +1,6 @@
 usage() {
   printf '%s\n' \
-    'Usage: ./bident.sh (-f <scope-file> | -t <target> | --resume <results-dir>) [-o <results-dir>] [-p-] [--no-udp] [--no-msf] [--tool-timeout N] [--msf-timeout N] [--msf-threads N] [--responder] [-T1|-T2|-T3|-T4|-T5]' \
-    '       sudo ./bident.sh (-f <scope-file> | -t <target> | --resume <results-dir>) [-o <results-dir>] [options] ...' \
+    'Usage: sudo ./bident.sh (-f <scope-file> | -t <target> | --resume <results-dir>) [-o <results-dir>] [-p-] [--no-udp] [--no-msf] [--host-timeout N] [--tool-timeout N] [--msf-timeout N] [--msf-threads N] [--responder] [-T1|-T2|-T3|-T4|-T5]' \
     '       ./bident.sh --check-deps' \
     '       sudo ./bident.sh --install-deps' \
     '' \
@@ -21,6 +20,7 @@ usage() {
     '  --install-deps    Install supported dependencies from Kali/Parrot apt repos.' \
     '                    Package installation may require sudo.' \
     '  --no-msf          Skip Metasploit auxiliary checks.' \
+    '  --host-timeout N  Add Nmap --host-timeout to scans and override live discovery timeout.' \
     '  --msf-timeout N   Timeout for each Metasploit port group, in seconds. Default: 300.' \
     '  --msf-threads N   THREADS value for Metasploit scanner modules. Default: 16.' \
     '  --no-udp          Skip UDP scans and UDP follow-up checks.' \
@@ -31,14 +31,13 @@ usage() {
     '  --speed <1-5>     Alternate timing syntax.' \
     '' \
     'Examples:' \
-    '  ./bident.sh -f scope.txt -p- -T4' \
     '  sudo ./bident.sh -f scope.txt -p- -T4' \
-    '  ./bident.sh -f scope.txt --msf-timeout 180 --msf-threads 24' \
-    '  ./bident.sh -f scope.txt --no-msf --tool-timeout 300' \
-    '  ./bident.sh -t 192.0.2.10 --no-udp -T4' \
+    '  sudo ./bident.sh -f scope.txt --msf-timeout 180 --msf-threads 24' \
+    '  sudo ./bident.sh -f scope.txt --no-msf --tool-timeout 300' \
+    '  sudo ./bident.sh -t 192.0.2.10 --no-udp -T4' \
     '  ./bident.sh --check-deps' \
     '  sudo ./bident.sh --install-deps' \
-    '  ./bident.sh --resume bident_results_20260928_120000'
+    '  sudo ./bident.sh --resume bident_results_20260928_120000'
 }
 
 print_banner() {

@@ -58,11 +58,10 @@ nmap screen dnsutils ldap-utils smbclient samba-common-bin sslscan ike-scan ssh-
 ## Usage
 
 ```bash
-./bident.sh (-f <scope-file> | -t <target> | --resume <results-dir>) [-o <results-dir>] [options] ...
 sudo ./bident.sh (-f <scope-file> | -t <target> | --resume <results-dir>) [-o <results-dir>] [options] ...
 ```
 
-You can run Bident as a normal user or with sudo. When launched with sudo, Bident runs privileged scans as root and drops back to the original sudo user for external tools such as `ssh-audit`.
+Run Bident with sudo/root for scans. Privileged scans run as root, and when launched with sudo, external tools such as `ssh-audit` run as the original sudo user when possible.
 
 ### Target Input
 
@@ -81,6 +80,7 @@ You can run Bident as a normal user or with sudo. When launched with sudo, Biden
 --install-deps    Install supported dependencies from Kali/Parrot apt repos.
                   Package installation may require sudo.
 --no-msf          Skip Metasploit auxiliary checks.
+--host-timeout N  Add Nmap --host-timeout to scans and override live discovery timeout.
 --msf-timeout N   Timeout for each Metasploit port group, in seconds. Default: 300.
 --msf-threads N   THREADS value for Metasploit scanner modules. Default: 16.
 --no-udp          Skip UDP scans and UDP follow-up checks.
@@ -96,43 +96,43 @@ You can run Bident as a normal user or with sudo. When launched with sudo, Biden
 Scan a scope file using default ports:
 
 ```bash
-./bident.sh -f scope.txt
+sudo ./bident.sh -f scope.txt
 ```
 
 Scan all ports with Nmap timing `-T4`:
 
 ```bash
-./bident.sh -f scope.txt -p- -T4
+sudo ./bident.sh -f scope.txt -p- -T4
 ```
 
 Run without Metasploit and cap external tool runtime at 300 seconds:
 
 ```bash
-./bident.sh -f scope.txt --no-msf --tool-timeout 300
+sudo ./bident.sh -f scope.txt --no-msf --tool-timeout 300
 ```
 
 Tune Metasploit scanner speed and per-port runtime:
 
 ```bash
-./bident.sh -f scope.txt --msf-threads 24 --msf-timeout 180
+sudo ./bident.sh -f scope.txt --msf-threads 24 --msf-timeout 180
 ```
 
 Scan a single target and skip UDP:
 
 ```bash
-./bident.sh -t 192.0.2.10 --no-udp -T4
+sudo ./bident.sh -t 192.0.2.10 --no-udp -T4
 ```
 
 Write results to a custom folder:
 
 ```bash
-./bident.sh -f scope.txt -o client_scan_results -p-
+sudo ./bident.sh -f scope.txt -o client_scan_results -p-
 ```
 
 Resume from an existing results folder:
 
 ```bash
-./bident.sh --resume bident_results_20260928_120000
+sudo ./bident.sh --resume bident_results_20260928_120000
 ```
 
 ## Output Layout

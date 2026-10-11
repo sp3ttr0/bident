@@ -154,23 +154,28 @@ require_root() {
   fi
 }
 
+require_root_scan_run() {
+  if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
+    printf '%sRun Bident With Sudo:%s\n' "$CLR_YELLOW" "$CLR_RESET" >&2
+    printf '  sudo ./bident.sh (-f <scope-file> | -t <target>)\n' >&2
+    exit 1
+  fi
+}
+
 prepare_privileged_execution() {
   if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
     PRIVILEGED_CMD_PREFIX=""
     if [[ -n "${SUDO_USER:-}" && "${SUDO_USER:-root}" != "root" ]]; then
+      need_command "$SUDO_CMD"
       BIDENT_DROP_PRIVILEGES=true
       BIDENT_RUN_USER="$SUDO_USER"
-      printf '%sPrivileged Scan Mode:%s Running privileged scans as root; external tools as %s\n' "$CLR_CYAN" "$CLR_RESET" "$BIDENT_RUN_USER"
+      printf '%sBident Is Running As Root:%s Privileged scans will run as root; external tools will run as %s when possible\n' "$CLR_CYAN" "$CLR_RESET" "$BIDENT_RUN_USER"
     else
       BIDENT_DROP_PRIVILEGES=false
-      printf '%sPrivileged Scan Mode:%s Running all commands as root because no original sudo user was detected\n' "$CLR_YELLOW" "$CLR_RESET"
+      printf '%sBident Is Running As Root:%s All commands will run as root\n' "$CLR_YELLOW" "$CLR_RESET"
     fi
   else
-    need_command "$SUDO_CMD"
-    PRIVILEGED_CMD_PREFIX="$SUDO_CMD"
-    BIDENT_DROP_PRIVILEGES=false
-    printf '%sPreparing Sudo For Privileged Scans Only%s\n' "$CLR_CYAN" "$CLR_RESET"
-    "$SUDO_CMD" -v || die "Sudo authentication failed"
+    require_root_scan_run
   fi
 }
 
