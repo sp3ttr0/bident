@@ -21,7 +21,7 @@ usage() {
     '                    Package installation may require sudo.' \
     '  --no-msf          Skip Metasploit auxiliary checks.' \
     '  --host-timeout N  Add Nmap --host-timeout to scans and override live discovery timeout.' \
-    '  --msf-timeout N   Timeout for each Metasploit port group, in seconds. Default: 300.' \
+    '  --msf-timeout N   Timeout for each Metasploit port group, in seconds. Default: 600.' \
     '  --msf-threads N   THREADS value for Metasploit scanner modules. Default: 16.' \
     '  --no-udp          Skip UDP scans and UDP follow-up checks.' \
     '  --responder       Start Responder on eth0 in a separate screen session.' \
@@ -32,7 +32,7 @@ usage() {
     '' \
     'Examples:' \
     '  sudo ./bident.sh -f scope.txt -p- -T4' \
-    '  sudo ./bident.sh -f scope.txt --msf-timeout 180 --msf-threads 24' \
+    '  sudo ./bident.sh -f scope.txt --msf-timeout 600 --msf-threads 24' \
     '  sudo ./bident.sh -f scope.txt --no-msf --tool-timeout 300' \
     '  sudo ./bident.sh -t 192.0.2.10 --no-udp -T4' \
     '  ./bident.sh --check-deps' \
