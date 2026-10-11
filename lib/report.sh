@@ -188,6 +188,223 @@ append_msf_result_files() {
   done
 }
 
+append_scan_configuration_section() {
+  local outfile="$1"
+  local scope_display="${SCOPE_FILE:-resume}"
+  local udp_mode="Enabled"
+  local msf_mode="Enabled"
+  local ports_mode="Default Nmap ports"
+  local nmap_host_timeout="Disabled"
+  local discovery_timeout="${DISCOVERY_HOST_TIMEOUT:-5m}"
+
+  [[ "$NO_UDP" == true ]] && udp_mode="Disabled"
+  [[ "$NO_MSF" == true ]] && msf_mode="Disabled"
+  [[ "$PORT_FLAG" == "-p-" ]] && ports_mode="All ports (-p-)"
+  [[ -n "${HOST_TIMEOUT:-}" ]] && nmap_host_timeout="$HOST_TIMEOUT"
+  [[ -n "${HOST_TIMEOUT:-}" ]] && discovery_timeout="$HOST_TIMEOUT"
+
+  {
+    printf '  <h2>Scan Configuration</h2>\n'
+    printf '  <section class="summary-grid">\n'
+    printf '    <div class="summary-card"><span>Target input</span><strong>%s</strong></div>\n' "$(html_escape_text "$scope_display")"
+    printf '    <div class="summary-card"><span>Ports</span><strong>%s</strong></div>\n' "$(html_escape_text "$ports_mode")"
+    printf '    <div class="summary-card"><span>Timing</span><strong>-%s</strong></div>\n' "$(html_escape_text "$TIMING")"
+    printf '    <div class="summary-card"><span>Base min-rate</span><strong>%s</strong></div>\n' "$(html_escape_text "$MIN_RATE")"
+    printf '    <div class="summary-card"><span>NSE min-rate</span><strong>%s</strong></div>\n' "$(html_escape_text "$NSE_MIN_RATE")"
+    printf '    <div class="summary-card"><span>Host discovery timeout</span><strong>%s</strong></div>\n' "$(html_escape_text "$discovery_timeout")"
+    printf '    <div class="summary-card"><span>Scan/NSE host timeout</span><strong>%s</strong></div>\n' "$(html_escape_text "$nmap_host_timeout")"
+    printf '    <div class="summary-card"><span>UDP scans</span><strong>%s</strong></div>\n' "$(html_escape_text "$udp_mode")"
+    printf '    <div class="summary-card"><span>Metasploit</span><strong>%s</strong></div>\n' "$(html_escape_text "$msf_mode")"
+    printf '    <div class="summary-card"><span>Tool timeout</span><strong>%s</strong></div>\n' "$([[ "$TOOL_TIMEOUT" -gt 0 ]] && html_escape_text "${TOOL_TIMEOUT}s" || printf 'Disabled')"
+    printf '    <div class="summary-card"><span>Metasploit timeout</span><strong>%s</strong></div>\n' "$([[ "$MSF_TIMEOUT" -gt 0 ]] && html_escape_text "${MSF_TIMEOUT}s" || printf 'Disabled')"
+    printf '    <div class="summary-card"><span>Metasploit threads</span><strong>%s</strong></div>\n' "$(html_escape_text "$MSF_THREADS")"
+    printf '  </section>\n'
+  } >> "$outfile"
+}
+
+finding_count_for_file() {
+  local file="$1"
+
+  [[ -s "$file" ]] || {
+    printf '0'
+    return
+  }
+
+  awk 'END {print NR + 0}' "$file"
+}
+
+append_finding_item() {
+  local outfile="$1"
+  local severity="$2"
+  local title="$3"
+  local source_file="$4"
+  local detail="${5:-}"
+  local count=0
+
+  [[ -s "$source_file" ]] || return
+  count="$(finding_count_for_file "$source_file")"
+
+  {
+    printf '    <li><span class="finding-severity">%s</span><div><strong>%s</strong>\n' "$(html_escape_text "$severity")" "$(html_escape_text "$title")"
+    printf '      <span>%s%s</span>\n' "$(html_escape_text "$source_file")" "$([[ "$count" -gt 0 ]] && printf ' · %s line(s)' "$count")"
+    if [[ -n "$detail" ]]; then
+      printf '      <p>%s</p>\n' "$(html_escape_text "$detail")"
+    fi
+    printf '    </div></li>\n'
+  } >> "$outfile"
+}
+
+credential_candidate_count() {
+  local file
+  local total_count=0
+
+  for file in "${NSE_DIR}"/*.txt "${TOOL_DIR}"/*.txt "${MSF_RESULT_DIR}"/*.txt; do
+    [[ -s "$file" ]] || continue
+    total_count=$((total_count + $(awk '
+      {
+        lowered = tolower($0)
+      }
+      lowered ~ /(user(name)?|account|login|password|passwd|pwd|credential|hash|secret|token|anonymous|valid[[:space:]]+credentials|empty[[:space:]]+password|ntlm)/ {
+        line = $0
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", line)
+        if (line != "") {
+          count++
+        }
+      }
+      END {print count + 0}
+    ' "$file")))
+  done
+
+  printf '%s' "$total_count"
+}
+
+append_findings_summary_section() {
+  local outfile="$1"
+  local temp_file
+  local credential_count=0
+
+  temp_file="$(mktemp "${TMPDIR:-/tmp}/bident_findings.XXXXXX")"
+  append_finding_item "$temp_file" "Review" "Weak SSH Ciphers" "${TOOL_DIR}/ssh-audit_results.txt"
+  append_finding_item "$temp_file" "Review" "Exposed RPC Services" "${TOOL_DIR}/s_rpcdump_135.txt"
+  append_finding_item "$temp_file" "Review" "Unauthenticated Remote Procedure Call" "${TOOL_DIR}/s_rpcclient_135.txt"
+  append_finding_item "$temp_file" "Review" "Misconfigured Server Message Block Signing" "${TOOL_DIR}/nxc_smb_signing_false.txt" "Possible Server Message Block (SMB) relay attack exposure."
+  append_finding_item "$temp_file" "Review" "SMBv1 Enabled" "${TOOL_DIR}/nxc_smbv1_true.txt"
+  append_finding_item "$temp_file" "Review" "LDAP Anonymous Bind" "${TOOL_DIR}/s_ldapsearch.txt"
+  append_finding_item "$temp_file" "Review" "DNSSec Not Configured" "${TOOL_DIR}/dnssec_not_configured.txt"
+  append_finding_item "$temp_file" "Review" "DNS Recursion Enabled" "${TOOL_DIR}/dns_recursion_enabled.txt"
+  append_finding_item "$temp_file" "Review" "IKE VPN Peer Weak Encryption" "${TOOL_DIR}/ike_weak_encryption.txt"
+  credential_count="$(credential_candidate_count)"
+  if [[ "$credential_count" -gt 0 ]]; then
+    {
+      printf '    <li><span class="finding-severity">Review</span><div><strong>Possible Usernames / Credentials</strong>\n'
+      printf '      <span>%s credential-related line(s) detected in saved result files</span>\n' "$credential_count"
+      printf '      <p>Review the Possible Usernames / Credentials section for source files and matching lines.</p>\n'
+      printf '    </div></li>\n'
+    } >> "$temp_file"
+  fi
+
+  {
+    printf '  <h2>Findings Summary</h2>\n'
+    if [[ -s "$temp_file" ]]; then
+      printf '  <ul class="finding-list">\n'
+      cat "$temp_file"
+      printf '  </ul>\n'
+    else
+      printf '  <div class="empty">No targeted findings were written by follow-up checks.</div>\n'
+    fi
+  } >> "$outfile"
+
+  rm -f "$temp_file"
+}
+
+append_credential_summary_section() {
+  local outfile="$1"
+  local temp_file
+  local file
+  local file_label
+  local line_number
+  local line_text
+  local total_count=0
+  local max_items=80
+
+  temp_file="$(mktemp "${TMPDIR:-/tmp}/bident_credentials.XXXXXX")"
+  for file in "${NSE_DIR}"/*.txt "${TOOL_DIR}"/*.txt "${MSF_RESULT_DIR}"/*.txt; do
+    [[ -s "$file" ]] || continue
+    file_label="$(default_result_label "$file")"
+    while IFS=$'\034' read -r line_number line_text; do
+      [[ -n "${line_text:-}" ]] || continue
+      total_count=$((total_count + 1))
+      [[ "$total_count" -le "$max_items" ]] || continue
+      printf '    <li><span class="finding-severity">Review</span><div><strong>%s</strong><span>%s:%s</span><p>%s</p></div></li>\n' \
+        "$(html_escape_text "$file_label")" \
+        "$(html_escape_text "$file")" \
+        "$(html_escape_text "$line_number")" \
+        "$(html_escape_text "$line_text")" >> "$temp_file"
+    done < <(awk '
+      {
+        lowered = tolower($0)
+      }
+      lowered ~ /(user(name)?|account|login|password|passwd|pwd|credential|hash|secret|token|anonymous|valid[[:space:]]+credentials|empty[[:space:]]+password|ntlm)/ {
+        line = $0
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", line)
+        if (line != "") {
+          print NR "\034" line
+        }
+      }
+    ' "$file")
+  done
+
+  {
+    printf '  <h2>Possible Usernames / Credentials</h2>\n'
+    if [[ -s "$temp_file" ]]; then
+      printf '  <p class="muted">These lines were extracted from tool output using credential-related keywords and should be manually verified.</p>\n'
+      printf '  <ul class="finding-list credential-list">\n'
+      cat "$temp_file"
+      printf '  </ul>\n'
+      if [[ "$total_count" -gt "$max_items" ]]; then
+        printf '  <p class="muted">Showing first %s of %s possible credential-related line(s).</p>\n' "$max_items" "$total_count"
+      fi
+    else
+      printf '  <div class="empty">No username or credential-related lines were detected in saved result files.</div>\n'
+    fi
+  } >> "$outfile"
+
+  rm -f "$temp_file"
+}
+
+append_per_host_summary_section() {
+  local outfile="$1"
+  local open_tsv="$2"
+
+  printf '  <h2>Per-Host Summary</h2>\n' >> "$outfile"
+  if [[ ! -s "$open_tsv" ]]; then
+    printf '  <div class="empty">No per-host open-port summary is available.</div>\n' >> "$outfile"
+    return
+  fi
+
+  {
+    printf '  <div class="host-summary-grid">\n'
+    awk -F '\t' '
+      NR > 1 {
+        host = $1
+        entry = $3 "/" toupper($2)
+        if (!seen[host, entry]++) {
+          ports[host] = ports[host] ? ports[host] ", " entry : entry
+        }
+      }
+      END {
+        for (host in ports) {
+          print host "\034" ports[host]
+        }
+      }
+    ' "$open_tsv" | sort | while IFS=$'\034' read -r host ports; do
+      [[ -n "${host:-}" ]] || continue
+      printf '    <details class="artifact host-summary"><summary>%s</summary><pre>%s</pre></details>\n' "$(html_escape_text "$host")" "$(html_escape_text "$ports")"
+    done
+    printf '  </div>\n'
+  } >> "$outfile"
+}
+
 normalize_service_name() {
   local proto="$1"
   local port="$2"
@@ -233,12 +450,15 @@ normalize_service_name() {
         tcp/3389) printf 'RDP' ;;
         udp/5060) printf 'SIP' ;;
         tcp/5800|tcp/5801|tcp/5900|tcp/5901) printf 'VNC' ;;
-        tcp/8009) printf 'AJP' ;;
+        tcp/8009) printf 'AJP13' ;;
         *) printf 'Unknown' ;;
       esac
       ;;
     ssl\|http|ssl/http|https)
       printf 'HTTPS'
+      ;;
+    http|http*)
+      printf 'HTTP'
       ;;
     ssh)
       printf 'SSH'
@@ -251,6 +471,24 @@ normalize_service_name() {
       ;;
     dns|domain)
       printf 'DNS'
+      ;;
+    rpcbind)
+      printf 'RPCBind'
+      ;;
+    nfs)
+      printf 'NFS'
+      ;;
+    vnc)
+      printf 'VNC'
+      ;;
+    irc)
+      printf 'IRC'
+      ;;
+    ajp13|ajp)
+      printf 'AJP13'
+      ;;
+    java-rmi)
+      printf 'Java-RMI'
       ;;
     ms-sql*|mssql*)
       printf 'MSSQL'
@@ -571,20 +809,117 @@ generate_html_report() {
       line-height: 1;
       margin-bottom: 6px;
     }
+    .summary-grid {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      margin-bottom: 18px;
+    }
+    .summary-card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      padding: 12px 14px;
+    }
+    .summary-card span {
+      color: var(--muted);
+      display: block;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0;
+      margin-bottom: 5px;
+      text-transform: uppercase;
+    }
+    .summary-card strong {
+      display: block;
+      font-size: 14px;
+      line-height: 1.35;
+      overflow-wrap: anywhere;
+    }
+    .finding-list {
+      display: grid;
+      gap: 8px;
+      list-style: none;
+      margin: 0 0 18px;
+      padding: 0;
+    }
+    .finding-list li {
+      align-items: flex-start;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      display: flex;
+      gap: 10px;
+      padding: 11px 12px;
+    }
+    .finding-list strong,
+    .finding-list span,
+    .finding-list p {
+      display: block;
+    }
+    .finding-list span {
+      color: var(--muted);
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+    .finding-list p {
+      color: var(--muted);
+      margin: 5px 0 0;
+    }
+    .finding-severity {
+      background: var(--chip);
+      border-radius: 999px;
+      color: var(--chip-text) !important;
+      flex: 0 0 auto;
+      font-size: 11px !important;
+      font-weight: 800;
+      padding: 2px 8px;
+      text-transform: uppercase;
+    }
+    .credential-list {
+      max-height: 360px;
+      overflow: auto;
+    }
+    .host-summary-grid {
+      display: grid;
+      gap: 8px;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      margin-bottom: 18px;
+    }
+    .host-summary {
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .host-summary summary {
+      color: var(--accent);
+      cursor: pointer;
+      font-weight: 800;
+      padding: 10px 12px;
+    }
+    .host-summary pre {
+      background: transparent;
+      color: var(--text);
+      font: 13px/1.5 "SFMono-Regular", Consolas, monospace;
+      margin: 0;
+      padding: 0 12px 12px;
+      white-space: pre-wrap;
+    }
     .port-card {
-      margin-bottom: 14px;
+      margin-bottom: 8px;
       overflow: hidden;
     }
     .port-summary {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 12px;
+      gap: 10px;
       cursor: pointer;
       list-style: none;
-      padding: 18px 20px;
-      min-height: 64px;
-      border-left: 5px solid var(--accent);
+      padding: 10px 16px;
+      min-height: 44px;
+      border-left: 4px solid var(--accent);
       transition: background 160ms ease, border-color 160ms ease;
     }
     .port-summary::-webkit-details-marker {
@@ -593,25 +928,25 @@ generate_html_report() {
     .port-title {
       display: inline-flex;
       align-items: center;
-      gap: 10px;
+      gap: 9px;
     }
     .port-chevron {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      width: 24px;
-      height: 24px;
+      width: 20px;
+      height: 20px;
       border-radius: 999px;
       background: var(--chip);
       color: var(--chip-text);
-      font-size: 18px;
+      font-size: 15px;
       font-weight: 900;
       line-height: 1;
       transition: transform 160ms ease, background 160ms ease;
     }
     .port-summary strong {
       display: block;
-      font-size: 16px;
+      font-size: 15px;
       line-height: 1.2;
     }
     .port-card[open] .port-summary {
@@ -626,11 +961,11 @@ generate_html_report() {
       display: inline-flex;
       align-items: center;
       border-radius: 999px;
-      padding: 3px 9px;
+      padding: 2px 8px;
       background: var(--chip);
       color: var(--chip-text);
       font-weight: 700;
-      font-size: 12px;
+      font-size: 11px;
       text-transform: uppercase;
     }
     .targets {
@@ -667,6 +1002,7 @@ generate_html_report() {
       border: 1px solid var(--line);
       border-radius: 8px;
       box-shadow: var(--shadow);
+      max-height: min(560px, 58vh);
       overflow: auto;
     }
     .service-table {
@@ -689,9 +1025,10 @@ generate_html_report() {
     }
     .service-table th {
       background: color-mix(in srgb, var(--panel) 88%, var(--accent));
+      box-shadow: 0 1px 0 var(--line);
       position: sticky;
       top: 0;
-      z-index: 1;
+      z-index: 2;
     }
     .sort-button {
       align-items: center;
@@ -873,6 +1210,11 @@ HTML
     printf '  </section>\n'
   } > "$report_file"
 
+  append_scan_configuration_section "$report_file"
+  append_findings_summary_section "$report_file"
+  append_credential_summary_section "$report_file"
+  append_per_host_summary_section "$report_file" "$open_tsv"
+
   printf '  <h2>Services</h2>\n' >> "$report_file"
   if [[ ! -s "$services_tsv" || "$service_rows" -eq 0 ]]; then
     printf '  <div class="empty">No services were confirmed.</div>\n' >> "$report_file"
@@ -902,7 +1244,7 @@ HTML
         "$(html_escape_text "$target")" \
         "$(html_escape_text "$port")" \
         "$(html_escape_text "$proto")" \
-        "$(html_escape_text "$name")" \
+        "$(html_escape_text "$(normalize_service_name "$proto" "$port" "$name")")" \
         "$(html_escape_text "$info")" \
         "$(html_escape_text "$target_port")" >> "$report_file"
     done < <(awk -F '\t' 'NR > 1 {print $1 "\034" $2 "\034" $3 "\034" $4 "\034" $5 "\034" $6}' "$services_tsv")
