@@ -221,6 +221,8 @@ main() {
   fi
   if [[ "$NO_MSF" != true ]]; then
     printf '%sMetasploit Threads:%s %s\n' "$CLR_CYAN" "$CLR_RESET" "$MSF_THREADS"
+    printf '%sMetasploit Connect Timeout:%s %s seconds\n' "$CLR_CYAN" "$CLR_RESET" "$MSF_CONNECT_TIMEOUT"
+    printf '%sMetasploit TCP Timeout:%s %s seconds\n' "$CLR_CYAN" "$CLR_RESET" "$MSF_TCP_TIMEOUT"
     if [[ "$MSF_TIMEOUT" -gt 0 ]]; then
       if command_available timeout; then
         printf '%sMetasploit Timeout:%s %s seconds per port group\n' "$CLR_CYAN" "$CLR_RESET" "$MSF_TIMEOUT"

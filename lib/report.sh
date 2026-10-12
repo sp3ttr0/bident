@@ -218,6 +218,8 @@ append_scan_configuration_section() {
     printf '    <div class="summary-card"><span>Tool timeout</span><strong>%s</strong></div>\n' "$([[ "$TOOL_TIMEOUT" -gt 0 ]] && html_escape_text "${TOOL_TIMEOUT}s" || printf 'Disabled')"
     printf '    <div class="summary-card"><span>Metasploit timeout</span><strong>%s</strong></div>\n' "$([[ "$MSF_TIMEOUT" -gt 0 ]] && html_escape_text "${MSF_TIMEOUT}s" || printf 'Disabled')"
     printf '    <div class="summary-card"><span>Metasploit threads</span><strong>%s</strong></div>\n' "$(html_escape_text "$MSF_THREADS")"
+    printf '    <div class="summary-card"><span>Metasploit connect timeout</span><strong>%ss</strong></div>\n' "$(html_escape_text "$MSF_CONNECT_TIMEOUT")"
+    printf '    <div class="summary-card"><span>Metasploit TCP timeout</span><strong>%ss</strong></div>\n' "$(html_escape_text "$MSF_TCP_TIMEOUT")"
     printf '  </section>\n'
   } >> "$outfile"
 }

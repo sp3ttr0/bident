@@ -29,6 +29,9 @@ msf_append_module() {
   {
     printf 'spool %s\n' "$(msf_absolute_path "$result_file")"
     printf 'use %s\n' "$module"
+    printf 'setg VERBOSE false\n'
+    printf 'setg ConnectTimeout %s\n' "$MSF_CONNECT_TIMEOUT"
+    printf 'setg TCPTimeout %s\n' "$MSF_TCP_TIMEOUT"
     printf 'set RHOSTS file:%s\n' "$(msf_absolute_path "$targets_file")"
     printf 'set RPORT %s\n' "$port"
     printf 'set THREADS %s\n' "$MSF_THREADS"
@@ -50,33 +53,21 @@ msf_add_port_modules() {
 
   case "${proto}/${port}" in
     tcp/21)
-      msf_append_module "$rc_file" auxiliary/scanner/ftp/ftp_version "$proto" "$port" "$ssl_mode" "$targets_file"
       msf_append_module "$rc_file" auxiliary/scanner/ftp/ftp_anonymous "$proto" "$port" "$ssl_mode" "$targets_file"
       ;;
-    tcp/22)
-      msf_append_module "$rc_file" auxiliary/scanner/ssh/ssh_version "$proto" "$port" "$ssl_mode" "$targets_file"
-      ;;
-    tcp/23)
-      msf_append_module "$rc_file" auxiliary/scanner/telnet/telnet_version "$proto" "$port" "$ssl_mode" "$targets_file"
-      ;;
     tcp/25|tcp/465|tcp/587)
-      msf_append_module "$rc_file" auxiliary/scanner/smtp/smtp_version "$proto" "$port" "$ssl_mode" "$targets_file"
       msf_append_module "$rc_file" auxiliary/scanner/smtp/smtp_relay "$proto" "$port" "$ssl_mode" "$targets_file"
       ;;
     tcp/53|udp/53)
       msf_append_module "$rc_file" auxiliary/scanner/dns/dns_amp "$proto" "$port" "$ssl_mode" "$targets_file"
       ;;
     tcp/139|tcp/445)
-      msf_append_module "$rc_file" auxiliary/scanner/smb/smb_version "$proto" "$port" "$ssl_mode" "$targets_file"
       msf_append_module "$rc_file" auxiliary/scanner/smb/smb_ms17_010 "$proto" "$port" "$ssl_mode" "$targets_file"
       msf_append_module "$rc_file" auxiliary/scanner/smb/smb_enumshares "$proto" "$port" "$ssl_mode" "$targets_file"
       msf_append_module "$rc_file" auxiliary/scanner/smb/smb_enumusers "$proto" "$port" "$ssl_mode" "$targets_file"
       ;;
     tcp/1433)
       msf_append_module "$rc_file" auxiliary/scanner/mssql/mssql_ping "$proto" "$port" "$ssl_mode" "$targets_file"
-      ;;
-    tcp/3306)
-      msf_append_module "$rc_file" auxiliary/scanner/mysql/mysql_version "$proto" "$port" "$ssl_mode" "$targets_file"
       ;;
     tcp/3389)
       msf_append_module "$rc_file" auxiliary/scanner/rdp/rdp_scanner "$proto" "$port" "$ssl_mode" "$targets_file"
@@ -151,7 +142,7 @@ run_msf_auxiliary_checks() {
     previous_key="$key"
 
     case "$key" in
-      tcp/21|tcp/22|tcp/23|tcp/25|tcp/465|tcp/587|tcp/53|udp/53|tcp/139|tcp/445|tcp/1433|tcp/3306|tcp/3389|tcp/5800|tcp/5801|tcp/5900|tcp/5901)
+      tcp/21|tcp/25|tcp/465|tcp/587|tcp/53|udp/53|tcp/139|tcp/445|tcp/1433|tcp/3389|tcp/5800|tcp/5801|tcp/5900|tcp/5901)
         target_file="${MSF_DIR}/targets_${proto}_${port}.txt"
         rc_file="${MSF_DIR}/metasploit_auxiliary_${proto}_${port}.rc"
         : > "$rc_file"
@@ -180,6 +171,8 @@ run_msf_auxiliary_checks() {
   printf '%sRunning Metasploit Auxiliary Checks%s\n' "$CLR_CYAN" "$CLR_RESET"
   printf '%sMetasploit Module Runs:%s %s\n' "$CLR_CYAN" "$CLR_RESET" "$module_count"
   printf '%sMetasploit Threads:%s %s\n' "$CLR_CYAN" "$CLR_RESET" "$MSF_THREADS"
+  printf '%sMetasploit Connect Timeout:%s %s seconds\n' "$CLR_CYAN" "$CLR_RESET" "$MSF_CONNECT_TIMEOUT"
+  printf '%sMetasploit TCP Timeout:%s %s seconds\n' "$CLR_CYAN" "$CLR_RESET" "$MSF_TCP_TIMEOUT"
   if [[ "$MSF_TIMEOUT" -gt 0 ]]; then
     if command_available timeout; then
       printf '%sMetasploit Timeout:%s %s seconds per port group\n' "$CLR_CYAN" "$CLR_RESET" "$MSF_TIMEOUT"
