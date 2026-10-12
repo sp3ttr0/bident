@@ -219,19 +219,10 @@ main() {
       printf '%sTool Timeout:%s Disabled because timeout command was not found\n' "$CLR_YELLOW" "$CLR_RESET"
     fi
   fi
-  if [[ "$NO_MSF" != true ]]; then
-    printf '%sMetasploit Threads:%s %s\n' "$CLR_CYAN" "$CLR_RESET" "$MSF_THREADS"
-    printf '%sMetasploit Connect Timeout:%s %s seconds\n' "$CLR_CYAN" "$CLR_RESET" "$MSF_CONNECT_TIMEOUT"
-    printf '%sMetasploit TCP Timeout:%s %s seconds\n' "$CLR_CYAN" "$CLR_RESET" "$MSF_TCP_TIMEOUT"
-    if [[ "$MSF_TIMEOUT" -gt 0 ]]; then
-      if command_available timeout; then
-        printf '%sMetasploit Timeout:%s %s seconds per port group\n' "$CLR_CYAN" "$CLR_RESET" "$MSF_TIMEOUT"
-      else
-        printf '%sMetasploit Timeout:%s Disabled because timeout command was not found\n' "$CLR_YELLOW" "$CLR_RESET"
-      fi
-    fi
+  if [[ "$NO_MSF" != true && "$MSF_TIMEOUT" -gt 0 ]] && ! command_available timeout; then
+    printf '%sMetasploit Timeout:%s Disabled because timeout command was not found\n' "$CLR_YELLOW" "$CLR_RESET"
   fi
-  
+
   need_command awk
   need_command cat
   need_command cp
@@ -417,7 +408,8 @@ main() {
   
   generate_open_port_reports
   
-  printf '%sBase Scans Finished:%s Starting Port Scanning and Vulnerability Scanning...\n' "$CLR_GREEN" "$CLR_RESET"
+  printf '%sBase Scans Finished...%s\n' "$CLR_GREEN" "$CLR_RESET"
+  printf '%sStarting Vulnerability Scanning...%s\n' "$CLR_CYAN" "$CLR_RESET"
   
   run_if_open "FTP NSE" tcp "21" \
     nmap -n -sV "-${TIMING}" "${NMAP_HOST_TIMEOUT_ARGS[@]}" --min-rate "$NSE_MIN_RATE" --script 'ftp-*' -p 21 -oN ${NSE_DIR}/s_ftp.txt -iL "$(open_targets_file_for_ports tcp 21 ftp)" --open

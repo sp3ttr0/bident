@@ -170,17 +170,13 @@ run_msf_auxiliary_checks() {
 
   printf '%sRunning Metasploit Auxiliary Checks%s\n' "$CLR_CYAN" "$CLR_RESET"
   printf '%sMetasploit Module Runs:%s %s\n' "$CLR_CYAN" "$CLR_RESET" "$module_count"
-  printf '%sMetasploit Threads:%s %s\n' "$CLR_CYAN" "$CLR_RESET" "$MSF_THREADS"
-  printf '%sMetasploit Connect Timeout:%s %s seconds\n' "$CLR_CYAN" "$CLR_RESET" "$MSF_CONNECT_TIMEOUT"
-  printf '%sMetasploit TCP Timeout:%s %s seconds\n' "$CLR_CYAN" "$CLR_RESET" "$MSF_TCP_TIMEOUT"
   if [[ "$MSF_TIMEOUT" -gt 0 ]]; then
     if command_available timeout; then
-      printf '%sMetasploit Timeout:%s %s seconds per port group\n' "$CLR_CYAN" "$CLR_RESET" "$MSF_TIMEOUT"
+      :
     else
       printf '%sMetasploit Timeout:%s Disabled because timeout command was not found\n' "$CLR_YELLOW" "$CLR_RESET"
     fi
   fi
-  printf '%sMetasploit Resource File:%s %s\n' "$CLR_CYAN" "$CLR_RESET" "$index_rc_file"
   print_progress_bar "Metasploit Progress" "$completed_modules" "$module_count"
   [[ -t 1 ]] && printf '\n'
 
@@ -199,10 +195,17 @@ run_msf_auxiliary_checks() {
       fi
     } >> "${MSF_DIR}/msfconsole.log" 2>&1 || status=$?
     if [[ "$status" -ne 0 ]]; then
-      printf '%sMetasploit Auxiliary For %s Finished With Status:%s %s\n' "$CLR_YELLOW" "${rc_labels[$index]}" "$CLR_RESET" "$status"
+      if [[ "$status" -eq 143 ]]; then
+        printf '%sMetasploit Auxiliary For %s Timed Out:%s Continuing...\n' "$CLR_YELLOW" "${rc_labels[$index]}" "$CLR_RESET"
+      else
+        printf '%sMetasploit Auxiliary For %s Finished With Status:%s %s\n' "$CLR_YELLOW" "${rc_labels[$index]}" "$CLR_RESET" "$status"
+      fi
     fi
     completed_modules=$((completed_modules + port_module_count))
     print_progress_bar "Metasploit Progress" "$completed_modules" "$module_count"
+    if [[ -t 1 && "$completed_modules" -lt "$module_count" ]]; then
+      printf '\n'
+    fi
   done
 
   find "$MSF_RESULT_DIR" -type f -size 0 -delete 2>/dev/null || true

@@ -169,10 +169,10 @@ prepare_privileged_execution() {
       need_command "$SUDO_CMD"
       BIDENT_DROP_PRIVILEGES=true
       BIDENT_RUN_USER="$SUDO_USER"
-      printf '%sBident Is Running As Root:%s Privileged scans will run as root; external tools will run as %s when possible\n' "$CLR_CYAN" "$CLR_RESET" "$BIDENT_RUN_USER"
+      printf '%sBident Is Running As Root%s\n' "$CLR_CYAN" "$CLR_RESET"
     else
       BIDENT_DROP_PRIVILEGES=false
-      printf '%sBident Is Running As Root:%s All commands will run as root\n' "$CLR_YELLOW" "$CLR_RESET"
+      printf '%sBident Is Running As Root%s\n' "$CLR_YELLOW" "$CLR_RESET"
     fi
   else
     require_root_scan_run

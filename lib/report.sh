@@ -243,7 +243,7 @@ append_finding_item() {
   local detail="${5:-}"
   local count=0
 
-  [[ -s "$source_file" ]] || return
+  [[ -s "$source_file" ]] || return 0
   count="$(finding_count_for_file "$source_file")"
 
   {
@@ -1212,7 +1212,6 @@ HTML
     printf '  </section>\n'
   } > "$report_file"
 
-  append_scan_configuration_section "$report_file"
   append_findings_summary_section "$report_file"
   append_credential_summary_section "$report_file"
   append_per_host_summary_section "$report_file" "$open_tsv"

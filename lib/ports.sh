@@ -284,11 +284,6 @@ generate_open_port_reports() {
   ' "$report_tsv" | sort > "$report_txt"
 
   generate_services_report
-
-  printf '%sWrote Open-Port Reports Under:%s %s/\n' "$CLR_GREEN" "$CLR_RESET" "$report_dir"
-  printf '%sWrote Target/Port Table:%s %s\n' "$CLR_GREEN" "$CLR_RESET" "$report_tsv"
-  printf '%sWrote Grouped Target Summary:%s %s\n' "$CLR_GREEN" "$CLR_RESET" "$report_txt"
-  printf '%sWrote Per-Port Target Lists Under:%s %s/\n' "$CLR_GREEN" "$CLR_RESET" "$report_dir"
 }
 
 json_escape_text() {
