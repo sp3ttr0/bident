@@ -408,8 +408,8 @@ main() {
   
   generate_open_port_reports
   
-  printf '%sBase Scans Finished...%s\n' "$CLR_GREEN" "$CLR_RESET"
-  printf '%sStarting Vulnerability Scanning...%s\n' "$CLR_CYAN" "$CLR_RESET"
+  printf '%sBase Scans Finished.%s\n' "$CLR_GREEN" "$CLR_RESET"
+  printf '%sStart Vulnerability Scanning...%s\n' "$CLR_CYAN" "$CLR_RESET"
   
   run_if_open "FTP NSE" tcp "21" \
     nmap -n -sV "-${TIMING}" "${NMAP_HOST_TIMEOUT_ARGS[@]}" --min-rate "$NSE_MIN_RATE" --script 'ftp-*' -p 21 -oN ${NSE_DIR}/s_ftp.txt -iL "$(open_targets_file_for_ports tcp 21 ftp)" --open

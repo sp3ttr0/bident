@@ -247,12 +247,17 @@ append_finding_item() {
   count="$(finding_count_for_file "$source_file")"
 
   {
-    printf '    <li><span class="finding-severity">%s</span><div><strong>%s</strong>\n' "$(html_escape_text "$severity")" "$(html_escape_text "$title")"
-    printf '      <span>%s%s</span>\n' "$(html_escape_text "$source_file")" "$([[ "$count" -gt 0 ]] && printf ' · %s line(s)' "$count")"
+    printf '    <li><details class="finding-panel">\n'
+    printf '      <summary><span class="finding-severity">%s</span><div><strong>%s</strong>\n' "$(html_escape_text "$severity")" "$(html_escape_text "$title")"
+    printf '        <span>%s%s</span>\n' "$(html_escape_text "$source_file")" "$([[ "$count" -gt 0 ]] && printf ' · %s line(s)' "$count")"
     if [[ -n "$detail" ]]; then
-      printf '      <p>%s</p>\n' "$(html_escape_text "$detail")"
+      printf '        <p>%s</p>\n' "$(html_escape_text "$detail")"
     fi
-    printf '    </div></li>\n'
+    printf '      </div></summary>\n'
+    printf '      <pre class="finding-evidence">'
+    html_escape_file "$source_file"
+    printf '</pre>\n'
+    printf '    </details></li>\n'
   } >> "$outfile"
 }
 
@@ -266,7 +271,7 @@ credential_candidate_count() {
       {
         lowered = tolower($0)
       }
-      lowered ~ /(user(name)?|account|login|password|passwd|pwd|credential|hash|secret|token|anonymous|valid[[:space:]]+credentials|empty[[:space:]]+password|ntlm)/ {
+      lowered ~ /(user(name)?|account|acct|login|password|passwd|pwd|credential|hash|secret|token|anonymous|valid[[:space:]]+credentials|empty[[:space:]]+password|ntlm)/ {
         line = $0
         gsub(/^[[:space:]]+|[[:space:]]+$/, "", line)
         if (line != "") {
@@ -298,10 +303,13 @@ append_findings_summary_section() {
   credential_count="$(credential_candidate_count)"
   if [[ "$credential_count" -gt 0 ]]; then
     {
-      printf '    <li><span class="finding-severity">Review</span><div><strong>Possible Usernames / Credentials</strong>\n'
-      printf '      <span>%s credential-related line(s) detected in saved result files</span>\n' "$credential_count"
-      printf '      <p>Review the Possible Usernames / Credentials section for source files and matching lines.</p>\n'
-      printf '    </div></li>\n'
+      printf '    <li><details class="finding-panel">\n'
+      printf '      <summary><span class="finding-severity">Review</span><div><strong>Possible Usernames / Credentials</strong>\n'
+      printf '        <span>%s credential-related line(s) detected in saved result files</span>\n' "$credential_count"
+      printf '        <p>Review the Possible Usernames / Credentials section for source files and matching lines.</p>\n'
+      printf '      </div></summary>\n'
+      printf '      <pre class="finding-evidence">Open the Possible Usernames / Credentials section below to review source files and matching lines.</pre>\n'
+      printf '    </details></li>\n'
     } >> "$temp_file"
   fi
 
@@ -319,6 +327,47 @@ append_findings_summary_section() {
   rm -f "$temp_file"
 }
 
+credential_display_value() {
+  local line="$1"
+  local value=""
+  local label=""
+  local secret=""
+
+  value="$(printf '%s' "$line" | sed -nE 's/.*([Uu]sername|[Uu]ser|[Ll]ogin|[Aa]ccount|[Aa]cct|[Pp]assword|[Pp]asswd|[Pp]wd|[Cc]redential|[Hh]ash|[Ss]ecret|[Tt]oken)[=:][[:space:]]*([^[:space:]&;,"'"'"'<>]+).*/\1:::BIDENT:::\2/p' | head -n 1)"
+  if [[ -n "$value" ]]; then
+    label="${value%%:::BIDENT:::*}"
+    secret="${value#*:::BIDENT:::}"
+    label="$(printf '%s' "$label" | tr '[:upper:]' '[:lower:]')"
+    case "$label" in
+      acct) label="account" ;;
+      passwd|pwd) label="password" ;;
+    esac
+    printf '%s: %s' "$label" "$secret"
+    return
+  fi
+
+  value="$(printf '%s' "$line" | sed -nE 's/.*[?&]([Uu]sername|[Uu]ser|[Ll]ogin|[Aa]ccount|[Aa]cct|[Pp]assword|[Pp]asswd|[Pp]wd|[Tt]oken)=([^&[:space:]<>"'"'"']+).*/\1:::BIDENT:::\2/p' | head -n 1)"
+  if [[ -n "$value" ]]; then
+    label="${value%%:::BIDENT:::*}"
+    secret="${value#*:::BIDENT:::}"
+    label="$(printf '%s' "$label" | tr '[:upper:]' '[:lower:]')"
+    case "$label" in
+      acct) label="account" ;;
+      passwd|pwd) label="password" ;;
+    esac
+    printf '%s: %s' "$label" "$secret"
+    return
+  fi
+
+  if printf '%s' "$line" | grep -Eiq 'anonymous'; then
+    printf 'anonymous access'
+  elif printf '%s' "$line" | grep -Eiq 'ntlm'; then
+    printf 'NTLM-related evidence'
+  else
+    printf 'credential-related keyword'
+  fi
+}
+
 append_credential_summary_section() {
   local outfile="$1"
   local temp_file
@@ -326,6 +375,7 @@ append_credential_summary_section() {
   local file_label
   local line_number
   local line_text
+  local display_value
   local total_count=0
   local max_items=80
 
@@ -337,16 +387,20 @@ append_credential_summary_section() {
       [[ -n "${line_text:-}" ]] || continue
       total_count=$((total_count + 1))
       [[ "$total_count" -le "$max_items" ]] || continue
-      printf '    <li><span class="finding-severity">Review</span><div><strong>%s</strong><span>%s:%s</span><p>%s</p></div></li>\n' \
+      display_value="$(credential_display_value "$line_text")"
+      printf '    <li><details class="finding-panel">\n'
+      printf '      <summary><span class="finding-severity">Review</span><div><strong>%s</strong><span>%s</span><p>%s:%s</p></div></summary>\n' \
+        "$(html_escape_text "$display_value")" \
         "$(html_escape_text "$file_label")" \
         "$(html_escape_text "$file")" \
-        "$(html_escape_text "$line_number")" \
-        "$(html_escape_text "$line_text")" >> "$temp_file"
+        "$(html_escape_text "$line_number")" >> "$temp_file"
+      printf '      <pre class="finding-evidence">%s</pre>\n' "$(html_escape_text "$line_text")" >> "$temp_file"
+      printf '    </details></li>\n' >> "$temp_file"
     done < <(awk '
       {
         lowered = tolower($0)
       }
-      lowered ~ /(user(name)?|account|login|password|passwd|pwd|credential|hash|secret|token|anonymous|valid[[:space:]]+credentials|empty[[:space:]]+password|ntlm)/ {
+      lowered ~ /(user(name)?|account|acct|login|password|passwd|pwd|credential|hash|secret|token|anonymous|valid[[:space:]]+credentials|empty[[:space:]]+password|ntlm)/ {
         line = $0
         gsub(/^[[:space:]]+|[[:space:]]+$/, "", line)
         if (line != "") {
@@ -847,14 +901,22 @@ generate_html_report() {
       padding: 0;
     }
     .finding-list li {
-      align-items: flex-start;
       background: var(--panel);
       border: 1px solid var(--line);
       border-radius: 8px;
       box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .finding-panel summary {
+      align-items: flex-start;
+      cursor: pointer;
       display: flex;
       gap: 10px;
+      list-style: none;
       padding: 11px 12px;
+    }
+    .finding-panel summary::-webkit-details-marker {
+      display: none;
     }
     .finding-list strong,
     .finding-list span,
@@ -879,6 +941,18 @@ generate_html_report() {
       font-weight: 800;
       padding: 2px 8px;
       text-transform: uppercase;
+    }
+    .finding-evidence {
+      border-top: 1px solid var(--line);
+      margin: 0;
+      max-height: 360px;
+      overflow: auto;
+      padding: 12px;
+      background: var(--code-bg);
+      color: var(--code-text);
+      font: 12px/1.45 "SFMono-Regular", Consolas, monospace;
+      white-space: pre-wrap;
+      word-break: break-word;
     }
     .credential-list {
       max-height: 360px;
@@ -1212,10 +1286,6 @@ HTML
     printf '  </section>\n'
   } > "$report_file"
 
-  append_findings_summary_section "$report_file"
-  append_credential_summary_section "$report_file"
-  append_per_host_summary_section "$report_file" "$open_tsv"
-
   printf '  <h2>Services</h2>\n' >> "$report_file"
   if [[ ! -s "$services_tsv" || "$service_rows" -eq 0 ]]; then
     printf '  <div class="empty">No services were confirmed.</div>\n' >> "$report_file"
@@ -1267,7 +1337,6 @@ HTML
         if [[ "$first_group" == false ]]; then
           printf '      </pre>\n' >> "$report_file"
           printf '      </details>\n' >> "$report_file"
-          append_port_result_files "$report_file" "$previous_proto" "$previous_port"
           printf '    </details>\n' >> "$report_file"
         fi
         first_group=false
@@ -1288,10 +1357,12 @@ HTML
     if [[ "$first_group" == false ]]; then
       printf '      </pre>\n' >> "$report_file"
       printf '      </details>\n' >> "$report_file"
-      append_port_result_files "$report_file" "$previous_proto" "$previous_port"
       printf '    </details>\n' >> "$report_file"
     fi
   fi
+
+  append_findings_summary_section "$report_file"
+  append_credential_summary_section "$report_file"
 
   {
     printf '  <h2>Core Artifacts</h2>\n'
