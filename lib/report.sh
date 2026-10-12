@@ -388,14 +388,16 @@ append_credential_summary_section() {
       total_count=$((total_count + 1))
       [[ "$total_count" -le "$max_items" ]] || continue
       display_value="$(credential_display_value "$line_text")"
-      printf '    <li><details class="finding-panel">\n'
-      printf '      <summary><span class="finding-severity">Review</span><div><strong>%s</strong><span>%s</span><p>%s:%s</p></div></summary>\n' \
-        "$(html_escape_text "$display_value")" \
-        "$(html_escape_text "$file_label")" \
-        "$(html_escape_text "$file")" \
-        "$(html_escape_text "$line_number")" >> "$temp_file"
-      printf '      <pre class="finding-evidence">%s</pre>\n' "$(html_escape_text "$line_text")" >> "$temp_file"
-      printf '    </details></li>\n' >> "$temp_file"
+      {
+        printf '    <li><details class="finding-panel">\n'
+        printf '      <summary><span class="finding-severity">Review</span><div><strong>%s</strong><span>%s</span><p>%s:%s</p></div></summary>\n' \
+          "$(html_escape_text "$display_value")" \
+          "$(html_escape_text "$file_label")" \
+          "$(html_escape_text "$file")" \
+          "$(html_escape_text "$line_number")"
+        printf '      <pre class="finding-evidence">%s</pre>\n' "$(html_escape_text "$line_text")"
+        printf '    </details></li>\n'
+      } >> "$temp_file"
     done < <(awk '
       {
         lowered = tolower($0)
