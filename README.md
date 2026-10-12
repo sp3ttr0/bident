@@ -81,7 +81,7 @@ Run Bident with sudo/root for scans. Privileged scans run as root, and when laun
                   Package installation may require sudo.
 --no-msf          Skip Metasploit auxiliary checks.
 --host-timeout N  Add Nmap --host-timeout to scans and override live discovery timeout.
---msf-timeout N   Timeout for each Metasploit port group, in seconds. Default: 600.
+--msf-timeout N   Timeout for each Metasploit port group, in seconds. Default: 120.
 --msf-threads N   THREADS value for Metasploit scanner modules. Default: 16.
 --no-udp          Skip UDP scans and UDP follow-up checks.
 --responder       Start Responder on eth0 in a separate screen session.
@@ -114,7 +114,7 @@ sudo ./bident.sh -f scope.txt --no-msf --tool-timeout 300
 Tune Metasploit scanner speed and per-port runtime:
 
 ```bash
-sudo ./bident.sh -f scope.txt --msf-threads 24 --msf-timeout 600
+sudo ./bident.sh -f scope.txt --msf-threads 24 --msf-timeout 120
 ```
 
 Scan a single target and skip UDP:

@@ -58,13 +58,8 @@ msf_add_port_modules() {
     tcp/25|tcp/465|tcp/587)
       msf_append_module "$rc_file" auxiliary/scanner/smtp/smtp_relay "$proto" "$port" "$ssl_mode" "$targets_file"
       ;;
-    tcp/53|udp/53)
-      msf_append_module "$rc_file" auxiliary/scanner/dns/dns_amp "$proto" "$port" "$ssl_mode" "$targets_file"
-      ;;
     tcp/139|tcp/445)
       msf_append_module "$rc_file" auxiliary/scanner/smb/smb_ms17_010 "$proto" "$port" "$ssl_mode" "$targets_file"
-      msf_append_module "$rc_file" auxiliary/scanner/smb/smb_enumshares "$proto" "$port" "$ssl_mode" "$targets_file"
-      msf_append_module "$rc_file" auxiliary/scanner/smb/smb_enumusers "$proto" "$port" "$ssl_mode" "$targets_file"
       ;;
     tcp/1433)
       msf_append_module "$rc_file" auxiliary/scanner/mssql/mssql_ping "$proto" "$port" "$ssl_mode" "$targets_file"
@@ -142,7 +137,7 @@ run_msf_auxiliary_checks() {
     previous_key="$key"
 
     case "$key" in
-      tcp/21|tcp/25|tcp/465|tcp/587|tcp/53|udp/53|tcp/139|tcp/445|tcp/1433|tcp/3389|tcp/5800|tcp/5801|tcp/5900|tcp/5901)
+      tcp/21|tcp/25|tcp/465|tcp/587|tcp/139|tcp/445|tcp/1433|tcp/3389|tcp/5800|tcp/5801|tcp/5900|tcp/5901)
         target_file="${MSF_DIR}/targets_${proto}_${port}.txt"
         rc_file="${MSF_DIR}/metasploit_auxiliary_${proto}_${port}.rc"
         : > "$rc_file"
