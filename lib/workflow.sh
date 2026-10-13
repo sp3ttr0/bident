@@ -340,25 +340,25 @@ main() {
   printf '%sStart Vulnerability Scanning...%s\n' "$CLR_CYAN" "$CLR_RESET"
   
   run_if_open "FTP NSE" tcp "21" \
-    nmap -d -n -sV "-${TIMING}" --min-rate "$NSE_MIN_RATE" --script 'ftp-*' -p 21 -oN ${NSE_DIR}/s_ftp.txt -iL "$(open_targets_file_for_ports tcp 21 ftp)" --open
+    nmap -d -n -sV "-${TIMING}" --min-rate "$NSE_MIN_RATE" --script 'ftp-* and not dos' -p 21 -oN ${NSE_DIR}/s_ftp.txt -iL "$(open_targets_file_for_ports tcp 21 ftp)" --open
   
   run_if_open "SSH NSE" tcp "22" \
-    nmap -d -n -sV "-${TIMING}" --min-rate "$NSE_MIN_RATE" --script 'ssh*' -p 22 -oN ${NSE_DIR}/s_ssh.txt -iL "$(open_targets_file_for_ports tcp 22 ssh)" --open
+    nmap -d -n -sV "-${TIMING}" --min-rate "$NSE_MIN_RATE" --script 'ssh* and not dos' -p 22 -oN ${NSE_DIR}/s_ssh.txt -iL "$(open_targets_file_for_ports tcp 22 ssh)" --open
   
   run_ssh_audit_check
   
   run_if_open "Telnet NSE" tcp "23" \
-    nmap -d -n -sV "-${TIMING}" --min-rate "$NSE_MIN_RATE" --script '*telnet*' -p 23 -oN ${NSE_DIR}/s_telnet.txt -iL "$(open_targets_file_for_ports tcp 23 telnet)" --open
+    nmap -d -n -sV "-${TIMING}" --min-rate "$NSE_MIN_RATE" --script '*telnet* and not dos' -p 23 -oN ${NSE_DIR}/s_telnet.txt -iL "$(open_targets_file_for_ports tcp 23 telnet)" --open
   
   run_if_open "SMTP NSE" tcp "25,465,587" \
-    nmap -d -n -sV "-${TIMING}" --min-rate "$NSE_MIN_RATE" --script 'smtp-*' -p 25,465,587 -oN ${NSE_DIR}/s_smtp.txt -iL "$(open_targets_file_for_ports tcp 25,465,587 smtp)" --open
+    nmap -d -n -sV "-${TIMING}" --min-rate "$NSE_MIN_RATE" --script 'smtp-* and not dos' -p 25,465,587 -oN ${NSE_DIR}/s_smtp.txt -iL "$(open_targets_file_for_ports tcp 25,465,587 smtp)" --open
   
   if [[ "$NO_UDP" == true ]]; then
     run_if_open "DNS NSE" tcp "53" \
-      run_privileged nmap -d -n -sS -sV "-${TIMING}" --min-rate "$NSE_MIN_RATE" --script '(default and *dns*) or fcrdns or dns-srv-enum or dns-random-txid or dns-random-srcport' -p 53 -oN ${NSE_DIR}/s_dns.txt -iL "$(open_targets_file_for_ports tcp 53 dns)" --open
+      run_privileged nmap -d -n -sS -sV "-${TIMING}" --min-rate "$NSE_MIN_RATE" --script '((default and *dns*) or fcrdns or dns-srv-enum or dns-random-txid or dns-random-srcport) and not dos' -p 53 -oN ${NSE_DIR}/s_dns.txt -iL "$(open_targets_file_for_ports tcp 53 dns)" --open
   else
     run_if_open "DNS NSE" any "53" \
-      run_privileged nmap -d -n -sS -sU -sV "-${TIMING}" --min-rate "$NSE_MIN_RATE" --script '(default and *dns*) or fcrdns or dns-srv-enum or dns-random-txid or dns-random-srcport' -p 53 -oN ${NSE_DIR}/s_dns.txt -iL "$(open_targets_file_for_ports any 53 dns)" --open
+      run_privileged nmap -d -n -sS -sU -sV "-${TIMING}" --min-rate "$NSE_MIN_RATE" --script '((default and *dns*) or fcrdns or dns-srv-enum or dns-random-txid or dns-random-srcport) and not dos' -p 53 -oN ${NSE_DIR}/s_dns.txt -iL "$(open_targets_file_for_ports any 53 dns)" --open
   fi
   
   run_dns_dig_checks
@@ -367,10 +367,10 @@ main() {
     nmap -d -n -sV "-${TIMING}" --min-rate "$NSE_MIN_RATE" --script '(http* or ssl*) and not (dos or http-slowloris*)' -p 80,81,443,8000,8080,8443 -oN ${NSE_DIR}/s_http.txt -iL "$(open_targets_file_for_ports tcp 80,81,443,8000,8080,8443 http_https)" --open
   
   run_if_open "AJP NSE" tcp "8009" \
-    nmap -d -n -sV "-${TIMING}" --min-rate "$NSE_MIN_RATE" --script 'ajp-*' -p 8009 -oN ${NSE_DIR}/s_ajp.txt -iL "$(open_targets_file_for_ports tcp 8009 ajp)" --open
+    nmap -d -n -sV "-${TIMING}" --min-rate "$NSE_MIN_RATE" --script 'ajp-* and not dos' -p 8009 -oN ${NSE_DIR}/s_ajp.txt -iL "$(open_targets_file_for_ports tcp 8009 ajp)" --open
   
   run_if_open "SSL/TLS NSE" tcp "443,465,587,636,993,995,3269,3389,8443" \
-    nmap -d -n -sV "-${TIMING}" --min-rate "$NSE_MIN_RATE" --script 'ssl-*' -p 443,465,587,636,993,995,3269,3389,8443 -oN ${NSE_DIR}/ssl_tls_results.txt -iL "$(open_targets_file_for_ports tcp 443,465,587,636,993,995,3269,3389,8443 ssl_tls)" --open
+    nmap -d -n -sV "-${TIMING}" --min-rate "$NSE_MIN_RATE" --script 'ssl-* and not dos' -p 443,465,587,636,993,995,3269,3389,8443 -oN ${NSE_DIR}/ssl_tls_results.txt -iL "$(open_targets_file_for_ports tcp 443,465,587,636,993,995,3269,3389,8443 ssl_tls)" --open
   
   run_ssl_external_checks
   
@@ -401,17 +401,17 @@ main() {
   fi
   
   run_if_open "SMB NSE" tcp "139,445" \
-    nmap -d -n -sV "-${TIMING}" --min-rate "$NSE_MIN_RATE" --script 'smb-vuln*,smb-enum*,smb-protocols,smb-security-mode,smb2-security-mode' -p 139,445 -oN ${NSE_DIR}/s_smb.txt -iL "$(open_targets_file_for_ports tcp 139,445 smb)" --open
+    nmap -d -n -sV "-${TIMING}" --min-rate "$NSE_MIN_RATE" --script '((smb-vuln* and not dos) or smb-enum* or smb-protocols or smb-security-mode or smb2-security-mode)' -p 139,445 -oN ${NSE_DIR}/s_smb.txt -iL "$(open_targets_file_for_ports tcp 139,445 smb)" --open
   
   run_smb_external_checks
   
   if [[ "$NO_UDP" != true ]]; then
     run_if_open "SNMP NSE" udp "161,162" \
-      run_privileged nmap -d -n -sUV "-${TIMING}" --min-rate "$NSE_MIN_RATE" --script 'snmp-*' -p 161,162 -oN ${NSE_DIR}/s_snmp.txt -iL "$(open_targets_file_for_ports udp 161,162 snmp)" --open
+      run_privileged nmap -d -n -sUV "-${TIMING}" --min-rate "$NSE_MIN_RATE" --script 'snmp-* and not dos' -p 161,162 -oN ${NSE_DIR}/s_snmp.txt -iL "$(open_targets_file_for_ports udp 161,162 snmp)" --open
   fi
   
   run_if_open "LDAP NSE" tcp "389,636,3268,3269" \
-    nmap -d -n -sV "-${TIMING}" --min-rate "$NSE_MIN_RATE" --script 'ldap* and not brute' -p 389,636,3268,3269 -oN ${NSE_DIR}/s_ldap.txt -iL "$(open_targets_file_for_ports tcp 389,636,3268,3269 ldap)" --open
+    nmap -d -n -sV "-${TIMING}" --min-rate "$NSE_MIN_RATE" --script 'ldap* and not (brute or dos)' -p 389,636,3268,3269 -oN ${NSE_DIR}/s_ldap.txt -iL "$(open_targets_file_for_ports tcp 389,636,3268,3269 ldap)" --open
   
   run_ldapsearch_checks
   
@@ -422,7 +422,7 @@ main() {
     run_ike_weak_encryption_check
   
     run_if_open "IPMI NSE" udp "623" \
-      run_privileged nmap -d -n -sU -sV "-${TIMING}" --min-rate "$NSE_MIN_RATE" --script 'ipmi-*' -p 623 -oN ${NSE_DIR}/s_ipmi.txt -iL "$(open_targets_file_for_ports udp 623 ipmi)" --open
+      run_privileged nmap -d -n -sU -sV "-${TIMING}" --min-rate "$NSE_MIN_RATE" --script 'ipmi-* and not dos' -p 623 -oN ${NSE_DIR}/s_ipmi.txt -iL "$(open_targets_file_for_ports udp 623 ipmi)" --open
   fi
   
   run_if_open "MSSQL NSE" tcp "1433" \
@@ -442,11 +442,11 @@ main() {
   
   if [[ "$NO_UDP" != true ]]; then
     run_if_open "SIP NSE" udp "5060" \
-      run_privileged nmap -d -n -sU -sV "-${TIMING}" --min-rate "$NSE_MIN_RATE" --script 'sip-*' -p 5060 -oN ${NSE_DIR}/s_sip.txt -iL "$(open_targets_file_for_ports udp 5060 sip)" --open
+      run_privileged nmap -d -n -sU -sV "-${TIMING}" --min-rate "$NSE_MIN_RATE" --script 'sip-* and not dos' -p 5060 -oN ${NSE_DIR}/s_sip.txt -iL "$(open_targets_file_for_ports udp 5060 sip)" --open
   fi
   
   run_if_open "VNC NSE" tcp "5800,5801,5900,5901" \
-    nmap -d -n -sV "-${TIMING}" --min-rate "$NSE_MIN_RATE" --script 'vnc-*' -p 5800,5801,5900,5901 -oN ${NSE_DIR}/s_vnc.txt -iL "$(open_targets_file_for_ports tcp 5800,5801,5900,5901 vnc)" --open
+    nmap -d -n -sV "-${TIMING}" --min-rate "$NSE_MIN_RATE" --script 'vnc-* and not dos' -p 5800,5801,5900,5901 -oN ${NSE_DIR}/s_vnc.txt -iL "$(open_targets_file_for_ports tcp 5800,5801,5900,5901 vnc)" --open
 
   if [[ "$NO_MSF" == true ]]; then
     printf '%sSkipping Metasploit Auxiliary Checks:%s --no-msf Enabled\n' "$CLR_YELLOW" "$CLR_RESET"
