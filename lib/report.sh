@@ -845,6 +845,20 @@ generate_html_report() {
       margin: 0;
       color: var(--muted);
     }
+    .report-footer {
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 16px;
+      justify-content: space-between;
+      margin-top: 28px;
+      padding-top: 14px;
+      font-size: 12px;
+    }
+    .report-footer strong {
+      color: var(--text);
+    }
     .metrics {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
@@ -1288,7 +1302,7 @@ HTML
     printf '    <button class="theme-toggle" type="button" id="themeToggle" aria-label="Toggle dark mode" title="Toggle theme">☾</button>\n'
     printf '  </header>\n'
     printf '  <section class="metrics">\n'
-    printf '    <div class="metric"><strong>%s</strong><span>Scoped hosts</span></div>\n' "$scope_count"
+    printf '    <div class="metric"><strong>%s</strong><span>Scoped Hosts/IPs</span></div>\n' "$scope_count"
     printf '    <div class="metric"><strong>%s</strong><span>Live Hosts/IPs</span></div>\n' "$live_count"
     printf '    <div class="metric"><strong>%s</strong><span>Total Ports Open</span></div>\n' "$open_rows"
     printf '  </section>\n'
@@ -1345,6 +1359,7 @@ HTML
         if [[ "$first_group" == false ]]; then
           printf '      </pre>\n' >> "$report_file"
           printf '      </details>\n' >> "$report_file"
+          append_port_result_files "$report_file" "$previous_proto" "$previous_port"
           printf '    </details>\n' >> "$report_file"
         fi
         first_group=false
@@ -1365,6 +1380,7 @@ HTML
     if [[ "$first_group" == false ]]; then
       printf '      </pre>\n' >> "$report_file"
       printf '      </details>\n' >> "$report_file"
+      append_port_result_files "$report_file" "$previous_proto" "$previous_port"
       printf '    </details>\n' >> "$report_file"
     fi
   fi
@@ -1404,6 +1420,11 @@ HTML
     printf '    <strong>Disclaimer</strong>\n'
     printf '    <p>Some findings may be false positives and should be manually validated before action is taken. Use this tool only for authorized and legal security testing. The owner of this script is not liable for illegal, unauthorized, or harmful use.</p>\n'
     printf '  </section>\n'
+    printf '  <footer class="report-footer">\n'
+    printf '    <span><strong>Bident</strong> Network VAPT Toolkit</span>\n'
+    printf '    <span>Generated %s</span>\n' "$(html_escape_text "$generated_at")"
+    printf '    <span>Authorized testing only. Validate findings manually.</span>\n'
+    printf '  </footer>\n'
     cat <<'HTML'
 </main>
 <script>
