@@ -80,15 +80,12 @@ Run Bident with sudo/root for scans. Privileged scans run as root, and when laun
 --install-deps    Install supported dependencies from Kali/Parrot apt repos.
                   Package installation may require sudo.
 --no-msf          Skip Metasploit auxiliary checks.
---host-timeout N  Add Nmap --host-timeout to scans and override live discovery timeout.
 --msf-timeout N   Timeout for each Metasploit port group, in seconds. Default: 120.
 --msf-threads N   THREADS value for Metasploit scanner modules. Default: 16.
 --no-udp          Skip UDP scans and UDP follow-up checks.
 --responder       Start Responder on eth0 in a separate screen session.
 --tool-timeout N  Timeout for external tools, in seconds. Default: disabled.
 -T1..-T5          Set the Nmap timing template. Default: -T4.
--T <1-5>          Alternate timing syntax.
---speed <1-5>     Alternate timing syntax.
 ```
 
 ### Examples

@@ -194,14 +194,11 @@ append_scan_configuration_section() {
   local udp_mode="Enabled"
   local msf_mode="Enabled"
   local ports_mode="Default Nmap ports"
-  local nmap_host_timeout="Disabled"
   local discovery_timeout="${DISCOVERY_HOST_TIMEOUT:-5m}"
 
   [[ "$NO_UDP" == true ]] && udp_mode="Disabled"
   [[ "$NO_MSF" == true ]] && msf_mode="Disabled"
   [[ "$PORT_FLAG" == "-p-" ]] && ports_mode="All ports (-p-)"
-  [[ -n "${HOST_TIMEOUT:-}" ]] && nmap_host_timeout="$HOST_TIMEOUT"
-  [[ -n "${HOST_TIMEOUT:-}" ]] && discovery_timeout="$HOST_TIMEOUT"
 
   {
     printf '  <h2>Scan Configuration</h2>\n'
@@ -212,7 +209,6 @@ append_scan_configuration_section() {
     printf '    <div class="summary-card"><span>Base min-rate</span><strong>%s</strong></div>\n' "$(html_escape_text "$MIN_RATE")"
     printf '    <div class="summary-card"><span>NSE min-rate</span><strong>%s</strong></div>\n' "$(html_escape_text "$NSE_MIN_RATE")"
     printf '    <div class="summary-card"><span>Host discovery timeout</span><strong>%s</strong></div>\n' "$(html_escape_text "$discovery_timeout")"
-    printf '    <div class="summary-card"><span>Scan/NSE host timeout</span><strong>%s</strong></div>\n' "$(html_escape_text "$nmap_host_timeout")"
     printf '    <div class="summary-card"><span>UDP scans</span><strong>%s</strong></div>\n' "$(html_escape_text "$udp_mode")"
     printf '    <div class="summary-card"><span>Metasploit</span><strong>%s</strong></div>\n' "$(html_escape_text "$msf_mode")"
     printf '    <div class="summary-card"><span>Tool timeout</span><strong>%s</strong></div>\n' "$([[ "$TOOL_TIMEOUT" -gt 0 ]] && html_escape_text "${TOOL_TIMEOUT}s" || printf 'Disabled')"
