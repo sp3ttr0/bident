@@ -257,25 +257,46 @@ append_finding_item() {
   } >> "$outfile"
 }
 
+credential_candidate_lines() {
+  local file="$1"
+
+  awk '
+    function trim(value) {
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+      return value
+    }
+    function is_credential_line(value, lowered) {
+      lowered = tolower(value)
+      if (lowered ~ /(^|[^[:alnum:]_-])(user(name)?|login|account|acct|password|passwd|pwd|credential|credentials|hash|secret|token)[[:space:]]*[:=][[:space:]]*[^[:space:]&;,<>]+/) {
+        return 1
+      }
+      if (lowered ~ /[?&](user(name)?|login|account|acct|password|passwd|pwd|token)=/) {
+        return 1
+      }
+      if (lowered ~ /(anonymous[[:space:]_-]*(login|access|ftp)|valid[[:space:]_-]+credentials|empty[[:space:]_-]+password|default[[:space:]_-]+credentials)/) {
+        return 1
+      }
+      if (lowered ~ /ntlm/ && lowered ~ /(user|account|domain|hash|credential)/) {
+        return 1
+      }
+      return 0
+    }
+    {
+      line = trim($0)
+      if (line != "" && is_credential_line(line)) {
+        print NR "\034" line
+      }
+    }
+  ' "$file"
+}
+
 credential_candidate_count() {
   local file
   local total_count=0
 
   for file in "${NSE_DIR}"/*.txt "${TOOL_DIR}"/*.txt "${MSF_RESULT_DIR}"/*.txt; do
     [[ -s "$file" ]] || continue
-    total_count=$((total_count + $(awk '
-      {
-        lowered = tolower($0)
-      }
-      lowered ~ /(user(name)?|account|acct|login|password|passwd|pwd|credential|hash|secret|token|anonymous|valid[[:space:]]+credentials|empty[[:space:]]+password|ntlm)/ {
-        line = $0
-        gsub(/^[[:space:]]+|[[:space:]]+$/, "", line)
-        if (line != "") {
-          count++
-        }
-      }
-      END {print count + 0}
-    ' "$file")))
+    total_count=$((total_count + $(credential_candidate_lines "$file" | awk 'END {print NR + 0}')))
   done
 
   printf '%s' "$total_count"
@@ -394,18 +415,7 @@ append_credential_summary_section() {
         printf '      <pre class="finding-evidence">%s</pre>\n' "$(html_escape_text "$line_text")"
         printf '    </details></li>\n'
       } >> "$temp_file"
-    done < <(awk '
-      {
-        lowered = tolower($0)
-      }
-      lowered ~ /(user(name)?|account|acct|login|password|passwd|pwd|credential|hash|secret|token|anonymous|valid[[:space:]]+credentials|empty[[:space:]]+password|ntlm)/ {
-        line = $0
-        gsub(/^[[:space:]]+|[[:space:]]+$/, "", line)
-        if (line != "") {
-          print NR "\034" line
-        }
-      }
-    ' "$file")
+    done < <(credential_candidate_lines "$file")
   done
 
   {

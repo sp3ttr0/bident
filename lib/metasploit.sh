@@ -44,6 +44,14 @@ msf_append_module() {
   } >> "$rc_file"
 }
 
+msf_append_exit() {
+  local rc_file="$1"
+
+  {
+    printf 'exit -y\n'
+  } >> "$rc_file"
+}
+
 msf_add_port_modules() {
   local rc_file="$1"
   local proto="$2"
@@ -147,6 +155,7 @@ run_msf_auxiliary_checks() {
         fi
         port_module_count="$(grep -c '^run$' "$rc_file" 2>/dev/null || true)"
         if [[ "$port_module_count" -gt 0 ]]; then
+          msf_append_exit "$rc_file"
           printf 'resource %s\n' "$(msf_absolute_path "$rc_file")" >> "$index_rc_file"
           rc_files+=("$rc_file")
           rc_labels+=("${proto}/${port}")

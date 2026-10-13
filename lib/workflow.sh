@@ -323,17 +323,7 @@ main() {
       esac
     done
     
-    printf '%sBase Scan Sessions Were Launched.%s\n' "$CLR_GREEN" "$CLR_RESET"
-    printf '%sUseful Monitor Commands:%s\n' "$CLR_CYAN" "$CLR_RESET"
-    printf '  screen -ls\n'
-    for session_name in "${START_SCAN_SESSIONS[@]}"; do
-      printf '  screen -r %s\n' "$session_name"
-    done
-    printf '%sScreen Logs:%s %s/*.screen.log\n' "$CLR_CYAN" "$CLR_RESET" "$LOG_DIR"
-    if [[ "$RUN_RESPONDER" == true ]]; then
-      printf '  screen -r responder\n'
-    fi
-    printf '%sDetach From A Screen Session With:%s Ctrl-a Then d\n' "$CLR_CYAN" "$CLR_RESET"
+    printf '%sBase Scans Sessions Launched.%s\n' "$CLR_GREEN" "$CLR_RESET"
     
     wait_for_screen_scans "${START_SCAN_SESSIONS[@]}"
   else
