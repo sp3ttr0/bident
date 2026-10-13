@@ -1,5 +1,13 @@
 msf_module_slug() {
+  local module="$1"
   local module_name="${1##*/}"
+
+  case "$module" in
+    auxiliary/scanner/ftp/anonymous)
+      printf 'ftp_anonymous'
+      return
+      ;;
+  esac
 
   printf '%s' "$module_name" | tr -c 'A-Za-z0-9_' '_'
 }
@@ -35,6 +43,9 @@ msf_append_module() {
     printf 'set RHOSTS file:%s\n' "$(msf_absolute_path "$targets_file")"
     printf 'set RPORT %s\n' "$port"
     printf 'set THREADS %s\n' "$MSF_THREADS"
+    if [[ "$module" == "auxiliary/scanner/snmp/snmp_login" ]]; then
+      printf 'set PASS_FILE %s\n' "$(msf_absolute_path "$SNMP_COMMUNITY_FILE")"
+    fi
     if [[ "$ssl_mode" == true ]]; then
       printf 'set SSL true\n'
     fi
@@ -61,7 +72,7 @@ msf_add_port_modules() {
 
   case "${proto}/${port}" in
     tcp/21)
-      msf_append_module "$rc_file" auxiliary/scanner/ftp/ftp_anonymous "$proto" "$port" "$ssl_mode" "$targets_file"
+      msf_append_module "$rc_file" auxiliary/scanner/ftp/anonymous "$proto" "$port" "$ssl_mode" "$targets_file"
       ;;
     tcp/25|tcp/465|tcp/587)
       msf_append_module "$rc_file" auxiliary/scanner/smtp/smtp_relay "$proto" "$port" "$ssl_mode" "$targets_file"
@@ -69,15 +80,18 @@ msf_add_port_modules() {
     tcp/139|tcp/445)
       msf_append_module "$rc_file" auxiliary/scanner/smb/smb_ms17_010 "$proto" "$port" "$ssl_mode" "$targets_file"
       ;;
-    tcp/1433)
-      msf_append_module "$rc_file" auxiliary/scanner/mssql/mssql_ping "$proto" "$port" "$ssl_mode" "$targets_file"
-      ;;
     tcp/3389)
       msf_append_module "$rc_file" auxiliary/scanner/rdp/rdp_scanner "$proto" "$port" "$ssl_mode" "$targets_file"
       msf_append_module "$rc_file" auxiliary/scanner/rdp/cve_2019_0708_bluekeep "$proto" "$port" "$ssl_mode" "$targets_file"
       ;;
     tcp/5800|tcp/5801|tcp/5900|tcp/5901)
       msf_append_module "$rc_file" auxiliary/scanner/vnc/vnc_none_auth "$proto" "$port" "$ssl_mode" "$targets_file"
+      ;;
+    udp/161)
+      msf_append_module "$rc_file" auxiliary/scanner/snmp/snmp_login "$proto" "$port" "$ssl_mode" "$targets_file"
+      msf_append_module "$rc_file" auxiliary/scanner/snmp/snmp_enum "$proto" "$port" "$ssl_mode" "$targets_file"
+      msf_append_module "$rc_file" auxiliary/scanner/snmp/snmp_enumusers "$proto" "$port" "$ssl_mode" "$targets_file"
+      msf_append_module "$rc_file" auxiliary/scanner/snmp/snmp_enumshares "$proto" "$port" "$ssl_mode" "$targets_file"
       ;;
   esac
 }
@@ -145,7 +159,7 @@ run_msf_auxiliary_checks() {
     previous_key="$key"
 
     case "$key" in
-      tcp/21|tcp/25|tcp/465|tcp/587|tcp/139|tcp/445|tcp/1433|tcp/3389|tcp/5800|tcp/5801|tcp/5900|tcp/5901)
+      tcp/21|tcp/25|tcp/465|tcp/587|tcp/139|tcp/445|tcp/3389|tcp/5800|tcp/5801|tcp/5900|tcp/5901|udp/161)
         target_file="${MSF_DIR}/targets_${proto}_${port}.txt"
         rc_file="${MSF_DIR}/metasploit_auxiliary_${proto}_${port}.rc"
         : > "$rc_file"

@@ -231,6 +231,49 @@ finding_count_for_file() {
   awk 'END {print NR + 0}' "$file"
 }
 
+finding_file_has_verified_evidence() {
+  local title="$1"
+  local source_file="$2"
+
+  [[ -s "$source_file" ]] || return 1
+
+  case "$title" in
+    "Weak SSH Ciphers")
+      grep -Eiq '\(fail\)|\[fail\]|\(warn\)|\[warn\]|(^|[^[:alnum:]])(weak|deprecated|insecure|cbc|arcfour|3des|blowfish|rijndael|diffie-hellman-group1|diffie-hellman-group14-sha1|ssh-rsa|dss|md5|sha-?1)([^[:alnum:]]|$)' "$source_file"
+      ;;
+    "Exposed RPC Services")
+      grep -Eiq '(^Protocol:|^Provider:|^[[:space:]]*[0-9a-fA-F-]{36}|ncacn_|MS-RPCE|uuid)' "$source_file" &&
+        ! grep -Eiq 'connection refused|NT_STATUS_|failed|error|timed out|No route to host' "$source_file"
+      ;;
+    "Unauthenticated Remote Procedure Call")
+      grep -Eiq 'Se[A-Za-z]+Privilege|found[[:space:]]+[0-9]+[[:space:]]+privileges|privilege' "$source_file" &&
+        ! grep -Eiq 'NT_STATUS_ACCESS_DENIED|NT_STATUS_LOGON_FAILURE|Cannot connect|failed|error|timed out' "$source_file"
+      ;;
+    "Misconfigured Server Message Block Signing")
+      grep -Eq 'signing:False' "$source_file"
+      ;;
+    "SMBv1 Enabled")
+      grep -Eq 'SMBv1:True' "$source_file"
+      ;;
+    "LDAP Anonymous Bind")
+      grep -Eiq '^(dn:|namingContexts:|defaultNamingContext:|rootDomainNamingContext:|supportedLDAPVersion:|supportedSASLMechanisms:)' "$source_file" &&
+        ! grep -Eiq 'Invalid credentials|Can.t contact LDAP server|ldap_bind:|failed|error|timed out' "$source_file"
+      ;;
+    "DNSSec Not Configured")
+      grep -q 'flags:' "$source_file" && ! grep -Eq 'flags:.*[[:space:]]ad[;[:space:]]' "$source_file"
+      ;;
+    "DNS Recursion Enabled")
+      grep -Eq 'flags:.*[[:space:]]ra[;[:space:]]' "$source_file"
+      ;;
+    "IKE VPN Peer Weak Encryption")
+      grep -Eiq '(^|[^A-Za-z0-9])(3des|des|md5|sha-?1|group[[:space:]]*1|group[[:space:]]*2|modp768|modp1024)([^A-Za-z0-9]|$)' "$source_file"
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 append_finding_item() {
   local outfile="$1"
   local severity="$2"
@@ -240,6 +283,7 @@ append_finding_item() {
   local count=0
 
   [[ -s "$source_file" ]] || return 0
+  finding_file_has_verified_evidence "$title" "$source_file" || return 0
   count="$(finding_count_for_file "$source_file")"
 
   {
@@ -263,12 +307,20 @@ append_finding_glob_item() {
   local title="$3"
   local source_pattern="$4"
   local detail="${5:-}"
+  local success_regex="${6:-}"
+  local reject_regex="${7:-}"
   local source_file
   local files=()
   local count=0
 
   for source_file in $source_pattern; do
     [[ -s "$source_file" ]] || continue
+    if [[ -n "$success_regex" ]] && ! grep -Eiq "$success_regex" "$source_file"; then
+      continue
+    fi
+    if [[ -n "$reject_regex" ]] && grep -Eiq "$reject_regex" "$source_file"; then
+      continue
+    fi
     files+=("$source_file")
     count=$((count + $(finding_count_for_file "$source_file")))
   done
@@ -342,7 +394,6 @@ credential_candidate_count() {
 append_findings_summary_section() {
   local outfile="$1"
   local temp_file
-  local credential_count=0
 
   temp_file="$(mktemp "${TMPDIR:-/tmp}/bident_findings.XXXXXX")"
   append_finding_item "$temp_file" "Review" "Weak SSH Ciphers" "${TOOL_DIR}/ssh-audit_results.txt"
@@ -354,23 +405,16 @@ append_findings_summary_section() {
   append_finding_item "$temp_file" "Review" "DNSSec Not Configured" "${TOOL_DIR}/dnssec_not_configured.txt"
   append_finding_item "$temp_file" "Review" "DNS Recursion Enabled" "${TOOL_DIR}/dns_recursion_enabled.txt"
   append_finding_item "$temp_file" "Review" "IKE VPN Peer Weak Encryption" "${TOOL_DIR}/ike_weak_encryption.txt"
-  append_finding_glob_item "$temp_file" "Review" "FTP Anonymous Enabled" "${MSF_RESULT_DIR}/ftp_anonymous_tcp_*.txt"
-  append_finding_glob_item "$temp_file" "Review" "SMTP Open Relay" "${MSF_RESULT_DIR}/smtp_relay_tcp_*.txt"
-  append_finding_glob_item "$temp_file" "Review" "Server Message Block (SMB) MS17-010 (EternalBlue) Vulnerability" "${MSF_RESULT_DIR}/smb_ms17_010_tcp_*.txt"
-  append_finding_glob_item "$temp_file" "Review" "Remote Desktop Protocol (RDP) BlueKeep Vulnerability" "${MSF_RESULT_DIR}/cve_2019_0708_bluekeep_tcp_*.txt"
-  append_finding_glob_item "$temp_file" "Review" "Virtual Network Computing (VNC) No Authentication" "${MSF_RESULT_DIR}/vnc_none_auth_tcp_*.txt"
-  credential_count="$(credential_candidate_count)"
-  if [[ "$credential_count" -gt 0 ]]; then
-    {
-      printf '    <li><details class="finding-panel">\n'
-      printf '      <summary><span class="finding-severity">Review</span><div><strong>Possible Usernames / Credentials</strong>\n'
-      printf '        <span>%s credential-related line(s) detected in saved result files</span>\n' "$credential_count"
-      printf '        <p>Review the Possible Usernames / Credentials section for source files and matching lines.</p>\n'
-      printf '      </div></summary>\n'
-      printf '      <pre class="finding-evidence">Open the Possible Usernames / Credentials section below to review source files and matching lines.</pre>\n'
-      printf '    </details></li>\n'
-    } >> "$temp_file"
-  fi
+  append_finding_glob_item "$temp_file" "Review" "FTP Anonymous Enabled" "${MSF_RESULT_DIR}/ftp_anonymous_tcp_*.txt" "" "anonymous.*(allowed|enabled|login|read|write)|logged in successfully|success.*anonymous" "failed to load module|unknown command|timed out|no anonymous|anonymous.*(denied|disabled|not allowed)|not vulnerable|not exploitable"
+  append_finding_glob_item "$temp_file" "Review" "SMTP Open Relay" "${MSF_RESULT_DIR}/smtp_relay_tcp_*.txt" "" "open relay|relay.*(accepted|allowed|successful)|success.*relay" "failed to load module|unknown command|timed out|not an open relay|relay.*(denied|not allowed|failed)|not vulnerable|not exploitable"
+  append_finding_glob_item "$temp_file" "Review" "Server Message Block (SMB) MS17-010 (EternalBlue) Vulnerability" "${MSF_RESULT_DIR}/smb_ms17_010_tcp_*.txt" "" "vulnerable|ms17-010.*detected|likely.*vulnerable" "failed to load module|unknown command|timed out|not vulnerable|not likely vulnerable|does not appear|not exploitable"
+  append_finding_glob_item "$temp_file" "Review" "Remote Desktop Protocol Detection" "${MSF_RESULT_DIR}/rdp_scanner_tcp_*.txt" "" "detected|rdp|remote desktop|protocol" "failed to load module|unknown command|timed out|not found|no response|connection refused|denied"
+  append_finding_glob_item "$temp_file" "Review" "Remote Desktop Protocol (RDP) BlueKeep Vulnerability" "${MSF_RESULT_DIR}/cve_2019_0708_bluekeep_tcp_*.txt" "" "vulnerable|bluekeep.*detected|likely.*vulnerable" "failed to load module|unknown command|timed out|not vulnerable|not likely vulnerable|does not appear|not exploitable"
+  append_finding_glob_item "$temp_file" "Review" "Virtual Network Computing (VNC) No Authentication" "${MSF_RESULT_DIR}/vnc_none_auth_tcp_*.txt" "" "no authentication|required.*false|authentication.*disabled|does not require authentication" "failed to load module|unknown command|timed out|requires authentication|authentication failed|not vulnerable|not exploitable"
+  append_finding_glob_item "$temp_file" "Review" "SNMP Default/Weak Community String" "${MSF_RESULT_DIR}/snmp_login_udp_*.txt" "" "login successful|success.*community|community.*(public|private)|\\[\\+\\].*(public|private)" "failed to load module|unknown command|timed out|login failed|no valid|not found|denied"
+  append_finding_glob_item "$temp_file" "Review" "SNMP Information Disclosure" "${MSF_RESULT_DIR}/snmp_enum_udp_*.txt" "" "system information|sysdescr|hostname|uptime|contact|location|interfaces|processes|storage" "failed to load module|unknown command|timed out|no access|not found|denied"
+  append_finding_glob_item "$temp_file" "Review" "SNMP Users Enumeration" "${MSF_RESULT_DIR}/snmp_enumusers_udp_*.txt" "" "user accounts|users|username|\\[\\+\\].*user" "failed to load module|unknown command|timed out|no access|not found|denied"
+  append_finding_glob_item "$temp_file" "Review" "SNMP Shares Enumeration" "${MSF_RESULT_DIR}/snmp_enumshares_udp_*.txt" "" "shares|share name|\\[\\+\\].*share" "failed to load module|unknown command|timed out|no access|not found|denied"
 
   {
     printf '  <h2>Findings Summary</h2>\n'

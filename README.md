@@ -88,6 +88,16 @@ Run Bident with sudo/root for scans. Privileged scans run as root, and when laun
 -T1..-T5          Set the Nmap timing template. Default: -T4.
 ```
 
+### Wordlists
+
+Bident includes a small default SNMP community list at:
+
+```bash
+wordlists/snmp_communities.txt
+```
+
+The SNMP Metasploit login check uses this file with `PASS_FILE`. Keep this list short unless you have explicit authorization to run broader community-string checks.
+
 ### Examples
 
 Scan a scope file using default ports:
