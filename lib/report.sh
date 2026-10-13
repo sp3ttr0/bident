@@ -257,6 +257,43 @@ append_finding_item() {
   } >> "$outfile"
 }
 
+append_finding_glob_item() {
+  local outfile="$1"
+  local severity="$2"
+  local title="$3"
+  local source_pattern="$4"
+  local detail="${5:-}"
+  local source_file
+  local files=()
+  local count=0
+
+  for source_file in $source_pattern; do
+    [[ -s "$source_file" ]] || continue
+    files+=("$source_file")
+    count=$((count + $(finding_count_for_file "$source_file")))
+  done
+
+  [[ "${#files[@]}" -gt 0 ]] || return 0
+
+  {
+    printf '    <li><details class="finding-panel">\n'
+    printf '      <summary><span class="finding-severity">%s</span><div><strong>%s</strong>\n' "$(html_escape_text "$severity")" "$(html_escape_text "$title")"
+    printf '        <span>%s file(s) · %s line(s)</span>\n' "${#files[@]}" "$count"
+    if [[ -n "$detail" ]]; then
+      printf '        <p>%s</p>\n' "$(html_escape_text "$detail")"
+    fi
+    printf '      </div></summary>\n'
+    printf '      <pre class="finding-evidence">'
+    for source_file in "${files[@]}"; do
+      printf '===== %s =====\n' "$(html_escape_text "$source_file")"
+      html_escape_file "$source_file"
+      printf '\n'
+    done
+    printf '</pre>\n'
+    printf '    </details></li>\n'
+  } >> "$outfile"
+}
+
 credential_candidate_lines() {
   local file="$1"
 
@@ -317,6 +354,11 @@ append_findings_summary_section() {
   append_finding_item "$temp_file" "Review" "DNSSec Not Configured" "${TOOL_DIR}/dnssec_not_configured.txt"
   append_finding_item "$temp_file" "Review" "DNS Recursion Enabled" "${TOOL_DIR}/dns_recursion_enabled.txt"
   append_finding_item "$temp_file" "Review" "IKE VPN Peer Weak Encryption" "${TOOL_DIR}/ike_weak_encryption.txt"
+  append_finding_glob_item "$temp_file" "Review" "FTP Anonymous Enabled" "${MSF_RESULT_DIR}/ftp_anonymous_tcp_*.txt"
+  append_finding_glob_item "$temp_file" "Review" "SMTP Open Relay" "${MSF_RESULT_DIR}/smtp_relay_tcp_*.txt"
+  append_finding_glob_item "$temp_file" "Review" "Server Message Block (SMB) MS17-010 (EternalBlue) Vulnerability" "${MSF_RESULT_DIR}/smb_ms17_010_tcp_*.txt"
+  append_finding_glob_item "$temp_file" "Review" "Remote Desktop Protocol (RDP) BlueKeep Vulnerability" "${MSF_RESULT_DIR}/cve_2019_0708_bluekeep_tcp_*.txt"
+  append_finding_glob_item "$temp_file" "Review" "Virtual Network Computing (VNC) No Authentication" "${MSF_RESULT_DIR}/vnc_none_auth_tcp_*.txt"
   credential_count="$(credential_candidate_count)"
   if [[ "$credential_count" -gt 0 ]]; then
     {
@@ -1008,6 +1050,14 @@ generate_html_report() {
       margin-bottom: 8px;
       overflow: hidden;
     }
+    .open-ports-wrap {
+      max-height: min(620px, 64vh);
+      overflow: auto;
+      padding-right: 4px;
+    }
+    .open-ports-wrap .port-card:last-child {
+      margin-bottom: 0;
+    }
     .port-summary {
       display: flex;
       align-items: center;
@@ -1353,6 +1403,7 @@ HTML
   if [[ ! -s "$open_tsv" || "$open_rows" -eq 0 ]]; then
     printf '  <div class="empty">No open ports were confirmed.</div>\n' >> "$report_file"
   else
+    printf '  <div class="open-ports-wrap">\n' >> "$report_file"
     while IFS=$'\t' read -r proto port target; do
       key="${proto}/${port}"
       if [[ "$key" != "$previous_key" ]]; then
@@ -1383,6 +1434,7 @@ HTML
       append_port_result_files "$report_file" "$previous_proto" "$previous_port"
       printf '    </details>\n' >> "$report_file"
     fi
+    printf '  </div>\n' >> "$report_file"
   fi
 
   append_findings_summary_section "$report_file"
@@ -1423,7 +1475,6 @@ HTML
     printf '  <footer class="report-footer">\n'
     printf '    <span><strong>Bident</strong> Network VAPT Toolkit</span>\n'
     printf '    <span>Generated %s</span>\n' "$(html_escape_text "$generated_at")"
-    printf '    <span>Authorized testing only. Validate findings manually.</span>\n'
     printf '  </footer>\n'
     cat <<'HTML'
 </main>
