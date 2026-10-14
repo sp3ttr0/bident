@@ -66,7 +66,7 @@ title_case_acronyms() {
       lower = tolower($i)
       if (lower == "ssh" || lower == "ftp" || lower == "smtp" || lower == "dns" ||
           lower == "smb" || lower == "mssql" || lower == "mysql" || lower == "rdp" ||
-          lower == "vnc") {
+          lower == "vnc" || lower == "snmp" || lower == "ntp") {
         $i = toupper($i)
       } else {
         $i = toupper(substr($i, 1, 1)) substr($i, 2)
@@ -151,7 +151,7 @@ append_result_file_section() {
     result_label="$(default_result_label "$result_file")"
   fi
 
-  resolved_file="$(resolve_result_file "$result_file")" || return 0
+  resolved_file="$(resolve_result_file "$result_file")" || return 1
   result_name="${resolved_file##*/}"
 
   {
@@ -166,13 +166,16 @@ append_result_file_section() {
     printf '</pre>\n'
     printf '</details>\n'
   } >> "$outfile"
+  return 0
 }
 
 append_ssl_external_result_files() {
   local outfile="$1"
+  local appended=1
 
-  append_result_file_section "$outfile" testssl_results.txt
-  append_result_file_section "$outfile" sslscan_results.txt
+  append_result_file_section "$outfile" testssl_results.txt && appended=0
+  append_result_file_section "$outfile" sslscan_results.txt && appended=0
+  return "$appended"
 }
 
 append_artifact_link() {
@@ -219,13 +222,73 @@ append_msf_result_files() {
   local proto="$2"
   local port="$3"
   local result_file
+  local appended=1
 
-  [[ "${NO_MSF:-false}" == true ]] && return
+  [[ "${NO_MSF:-false}" == true ]] && return 1
 
   for result_file in "${MSF_RESULT_DIR}/"*"_${proto}_${port}.txt"; do
     [[ -s "$result_file" ]] || continue
-    append_result_file_section "$outfile" "$result_file"
+    append_result_file_section "$outfile" "$result_file" && appended=0
   done
+  return "$appended"
+}
+
+append_base_scan_port_evidence() {
+  local outfile="$1"
+  local proto="$2"
+  local port="$3"
+  local temp_file
+  local source_file
+  local sources=()
+
+  temp_file="$(mktemp "${TMPDIR:-/tmp}/bident_base_evidence.XXXXXX")"
+
+  case "$proto" in
+    tcp)
+      sources=("${SCAN_DIR}/syn.gnmap" "${SCAN_DIR}/con.gnmap")
+      ;;
+    udp)
+      sources=("${SCAN_DIR}/udp.gnmap")
+      ;;
+    *)
+      sources=("${SCAN_DIR}/syn.gnmap" "${SCAN_DIR}/con.gnmap" "${SCAN_DIR}/udp.gnmap")
+      ;;
+  esac
+
+  for source_file in "${sources[@]}"; do
+    [[ -s "$source_file" ]] || continue
+    awk -v wanted_port="$port" -v wanted_proto="$proto" -v source_file="$source_file" '
+      $0 ~ "Ports:" {
+        split($0, parts, "Ports: ")
+        split(parts[2], ports, ", ")
+        for (i in ports) {
+          split(ports[i], fields, "/")
+          if (fields[1] == wanted_port && fields[2] == "open" && fields[3] == wanted_proto) {
+            print "===== " source_file " ====="
+            print $0
+            print ""
+            break
+          }
+        }
+      }
+    ' "$source_file" >> "$temp_file"
+  done
+
+  if [[ -s "$temp_file" ]]; then
+    {
+      printf '<details class="artifact result-panel">\n'
+      printf '<summary>Base Scan Evidence <span class="artifact-file">%s/%s</span></summary>\n' "$(html_escape_text "$proto")" "$(html_escape_text "$port")"
+      printf '<pre>'
+      html_escape_file_preview "$temp_file"
+      printf '</pre>\n'
+      printf '</details>\n'
+    } >> "$outfile"
+    rm -f "$temp_file"
+    return 0
+  fi
+
+  rm -f "$temp_file"
+  return 1
 }
 
 append_scan_configuration_section() {
@@ -450,11 +513,11 @@ append_findings_summary_section() {
   append_finding_glob_item "$temp_file" "Review" "Server Message Block (SMB) MS17-010 (EternalBlue) Vulnerability" "${MSF_RESULT_DIR}/smb_ms17_010_tcp_*.txt" "" "vulnerable|ms17-010.*detected|likely.*vulnerable" "failed to load module|unknown command|timed out|not vulnerable|not likely vulnerable|does not appear|not exploitable"
   append_finding_glob_item "$temp_file" "Review" "Remote Desktop Protocol Detection" "${MSF_RESULT_DIR}/rdp_scanner_tcp_*.txt" "" "detected|rdp|remote desktop|protocol" "failed to load module|unknown command|timed out|not found|no response|connection refused|denied"
   append_finding_glob_item "$temp_file" "Review" "Remote Desktop Protocol (RDP) BlueKeep Vulnerability" "${MSF_RESULT_DIR}/cve_2019_0708_bluekeep_tcp_*.txt" "" "vulnerable|bluekeep.*detected|likely.*vulnerable" "failed to load module|unknown command|timed out|not vulnerable|not likely vulnerable|does not appear|not exploitable"
-  append_finding_glob_item "$temp_file" "Review" "Virtual Network Computing (VNC) No Authentication" "${MSF_RESULT_DIR}/vnc_none_auth_tcp_*.txt" "" "no authentication|required.*false|authentication.*disabled|does not require authentication" "failed to load module|unknown command|timed out|requires authentication|authentication failed|not vulnerable|not exploitable"
+  append_finding_glob_item "$temp_file" "Review" "Virtual Network Computing (VNC) None Authentication" "${MSF_RESULT_DIR}/vnc_none_auth_tcp_*.txt" "" "no authentication|required.*false|authentication.*disabled|does not require authentication" "failed to load module|unknown command|timed out|no authentication types available|too many authentication failures|auth negotiation failed|requires authentication|authentication failed|not vulnerable|not exploitable"
   append_finding_glob_item "$temp_file" "Review" "SNMP Default/Weak Community String" "${MSF_RESULT_DIR}/snmp_login_udp_*.txt" "" "login successful|success.*community|community.*(public|private)|\\[\\+\\].*(public|private)" "failed to load module|unknown command|timed out|login failed|no valid|not found|denied"
   append_finding_glob_item "$temp_file" "Review" "SNMP Information Disclosure" "${MSF_RESULT_DIR}/snmp_enum_udp_*.txt" "" "system information|sysdescr|hostname|uptime|contact|location|interfaces|processes|storage" "failed to load module|unknown command|timed out|no access|not found|denied"
-  append_finding_glob_item "$temp_file" "Review" "SNMP Users Enumeration" "${MSF_RESULT_DIR}/snmp_enumusers_udp_*.txt" "" "user accounts|users|username|\\[\\+\\].*user" "failed to load module|unknown command|timed out|no access|not found|denied"
-  append_finding_glob_item "$temp_file" "Review" "SNMP Shares Enumeration" "${MSF_RESULT_DIR}/snmp_enumshares_udp_*.txt" "" "shares|share name|\\[\\+\\].*share" "failed to load module|unknown command|timed out|no access|not found|denied"
+  append_finding_glob_item "$temp_file" "Review" "SNMP Users Enumeration" "${MSF_RESULT_DIR}/snmp_enumusers_udp_*.txt" "" "\\[\\+\\].*(user|account|uid)|(^|[[:space:]])(User|Username|Account|UID)[[:space:]]*[:=]" "failed to load module|unknown command|timed out|no access|not found|denied"
+  append_finding_glob_item "$temp_file" "Review" "SNMP Shares Enumeration" "${MSF_RESULT_DIR}/snmp_enumshares_udp_*.txt" "" "\\[\\+\\].*(share|path)|(^|[[:space:]])(Share|Share Name|Path)[[:space:]]*[:=]" "failed to load module|unknown command|timed out|no access|not found|denied"
 
   {
     printf '  <h2>Findings Summary</h2>\n'
@@ -662,6 +725,12 @@ normalize_service_name() {
     dns|domain)
       printf 'DNS'
       ;;
+    ntp)
+      printf 'NTP'
+      ;;
+    snmp|snmptrap)
+      printf 'SNMP'
+      ;;
     rpcbind)
       printf 'RPCBind'
       ;;
@@ -722,89 +791,91 @@ append_port_result_files() {
   local outfile="$1"
   local proto="$2"
   local port="$3"
+  local appended=1
 
   case "${proto}/${port}" in
-    tcp/21) append_result_file_section "$outfile" s_ftp.txt ;;
+    tcp/21) append_result_file_section "$outfile" s_ftp.txt && appended=0 ;;
     tcp/22)
-      append_result_file_section "$outfile" s_ssh.txt
-      append_result_file_section "$outfile" ssh-audit_results.txt "Weak SSH Ciphers"
+      append_result_file_section "$outfile" s_ssh.txt && appended=0
+      append_result_file_section "$outfile" ssh-audit_results.txt "Weak SSH Ciphers" && appended=0
       ;;
-    tcp/23) append_result_file_section "$outfile" s_telnet.txt ;;
-    tcp/25) append_result_file_section "$outfile" s_smtp.txt ;;
+    tcp/23) append_result_file_section "$outfile" s_telnet.txt && appended=0 ;;
+    tcp/25) append_result_file_section "$outfile" s_smtp.txt && appended=0 ;;
     tcp/465|tcp/587)
-      append_result_file_section "$outfile" s_smtp.txt
-      append_result_file_section "$outfile" ssl_tls_results.txt
-      append_ssl_external_result_files "$outfile"
+      append_result_file_section "$outfile" s_smtp.txt && appended=0
+      append_result_file_section "$outfile" ssl_tls_results.txt && appended=0
+      append_ssl_external_result_files "$outfile" && appended=0
       ;;
     tcp/53|udp/53)
-      append_result_file_section "$outfile" s_dns.txt
-      append_result_file_section "$outfile" dnssec_not_configured.txt
-      append_result_file_section "$outfile" dns_recursion_enabled.txt
+      append_result_file_section "$outfile" s_dns.txt && appended=0
+      append_result_file_section "$outfile" dnssec_not_configured.txt && appended=0
+      append_result_file_section "$outfile" dns_recursion_enabled.txt && appended=0
       ;;
     tcp/80|tcp/81|tcp/8000|tcp/8080)
-      append_result_file_section "$outfile" s_http.txt
+      append_result_file_section "$outfile" s_http.txt && appended=0
       ;;
     tcp/443|tcp/8443)
-      append_result_file_section "$outfile" s_http.txt "HTTPS NMAP Results"
-      append_result_file_section "$outfile" ssl_tls_results.txt
-      append_ssl_external_result_files "$outfile"
+      append_result_file_section "$outfile" s_http.txt "HTTPS NMAP Results" && appended=0
+      append_result_file_section "$outfile" ssl_tls_results.txt && appended=0
+      append_ssl_external_result_files "$outfile" && appended=0
       ;;
-    tcp/8009) append_result_file_section "$outfile" s_ajp.txt ;;
-    tcp/88) append_result_file_section "$outfile" s_kerberos.txt ;;
+    tcp/8009) append_result_file_section "$outfile" s_ajp.txt && appended=0 ;;
+    tcp/88) append_result_file_section "$outfile" s_kerberos.txt && appended=0 ;;
     tcp/110)
-      append_result_file_section "$outfile" s_pop3.txt
+      append_result_file_section "$outfile" s_pop3.txt && appended=0
       ;;
     tcp/995)
-      append_result_file_section "$outfile" s_pop3.txt
-      append_result_file_section "$outfile" ssl_tls_results.txt
-      append_ssl_external_result_files "$outfile"
+      append_result_file_section "$outfile" s_pop3.txt && appended=0
+      append_result_file_section "$outfile" ssl_tls_results.txt && appended=0
+      append_ssl_external_result_files "$outfile" && appended=0
       ;;
     tcp/993)
-      append_result_file_section "$outfile" ssl_tls_results.txt
-      append_ssl_external_result_files "$outfile"
+      append_result_file_section "$outfile" ssl_tls_results.txt && appended=0
+      append_ssl_external_result_files "$outfile" && appended=0
       ;;
-    tcp/111|udp/111) append_result_file_section "$outfile" s_rpcbind.txt ;;
+    tcp/111|udp/111) append_result_file_section "$outfile" s_rpcbind.txt && appended=0 ;;
     tcp/135)
-      append_result_file_section "$outfile" s_rpcdump_135.txt "Exposed RPC Services"
-      append_result_file_section "$outfile" s_rpcclient_135.txt "Unauthenticated Remote Procedure Call"
+      append_result_file_section "$outfile" s_rpcdump_135.txt "Exposed RPC Services" && appended=0
+      append_result_file_section "$outfile" s_rpcclient_135.txt "Unauthenticated Remote Procedure Call" && appended=0
       ;;
-    udp/123) append_result_file_section "$outfile" s_ntp.txt ;;
-    udp/137) append_result_file_section "$outfile" s_netbios.txt ;;
+    udp/123) append_result_file_section "$outfile" s_ntp.txt && appended=0 ;;
+    udp/137) append_result_file_section "$outfile" s_netbios.txt && appended=0 ;;
     tcp/139|tcp/445)
-      append_result_file_section "$outfile" s_smb.txt
-      append_result_file_section "$outfile" nxc_smb_signing_false.txt "Misconfigured Server Message Block Signing"
-      append_result_file_section "$outfile" nxc_smbv1_true.txt "SMBv1 Enabled"
+      append_result_file_section "$outfile" s_smb.txt && appended=0
+      append_result_file_section "$outfile" nxc_smb_signing_false.txt "Misconfigured Server Message Block Signing" && appended=0
+      append_result_file_section "$outfile" nxc_smbv1_true.txt "SMBv1 Enabled" && appended=0
       ;;
-    udp/161|udp/162) append_result_file_section "$outfile" s_snmp.txt ;;
+    udp/161|udp/162) append_result_file_section "$outfile" s_snmp.txt && appended=0 ;;
     tcp/389|tcp/3268)
-      append_result_file_section "$outfile" s_ldap.txt
-      append_result_file_section "$outfile" s_ldapsearch.txt "LDAP Anonymous Bind"
+      append_result_file_section "$outfile" s_ldap.txt && appended=0
+      append_result_file_section "$outfile" s_ldapsearch.txt "LDAP Anonymous Bind" && appended=0
       ;;
     tcp/636|tcp/3269)
-      append_result_file_section "$outfile" s_ldap.txt
-      append_result_file_section "$outfile" s_ldapsearch.txt "LDAP Anonymous Bind"
-      append_result_file_section "$outfile" ssl_tls_results.txt
-      append_ssl_external_result_files "$outfile"
+      append_result_file_section "$outfile" s_ldap.txt && appended=0
+      append_result_file_section "$outfile" s_ldapsearch.txt "LDAP Anonymous Bind" && appended=0
+      append_result_file_section "$outfile" ssl_tls_results.txt && appended=0
+      append_ssl_external_result_files "$outfile" && appended=0
       ;;
     udp/500)
-      append_result_file_section "$outfile" s_ike.txt
-      append_result_file_section "$outfile" ike_weak_encryption.txt
+      append_result_file_section "$outfile" s_ike.txt && appended=0
+      append_result_file_section "$outfile" ike_weak_encryption.txt && appended=0
       ;;
-    udp/623) append_result_file_section "$outfile" s_ipmi.txt ;;
-    tcp/1433) append_result_file_section "$outfile" db_mssql.txt ;;
-    tcp/1521) append_result_file_section "$outfile" s_oracle.txt ;;
-    tcp/2049) append_result_file_section "$outfile" s_nfs.txt ;;
-    tcp/3306) append_result_file_section "$outfile" db_mysql.txt ;;
+    udp/623) append_result_file_section "$outfile" s_ipmi.txt && appended=0 ;;
+    tcp/1433) append_result_file_section "$outfile" db_mssql.txt && appended=0 ;;
+    tcp/1521) append_result_file_section "$outfile" s_oracle.txt && appended=0 ;;
+    tcp/2049) append_result_file_section "$outfile" s_nfs.txt && appended=0 ;;
+    tcp/3306) append_result_file_section "$outfile" db_mysql.txt && appended=0 ;;
     tcp/3389)
-      append_result_file_section "$outfile" s_rdp.txt
-      append_result_file_section "$outfile" ssl_tls_results.txt
-      append_ssl_external_result_files "$outfile"
+      append_result_file_section "$outfile" s_rdp.txt && appended=0
+      append_result_file_section "$outfile" ssl_tls_results.txt && appended=0
+      append_ssl_external_result_files "$outfile" && appended=0
       ;;
-    udp/5060) append_result_file_section "$outfile" s_sip.txt ;;
-    tcp/5800|tcp/5801|tcp/5900|tcp/5901) append_result_file_section "$outfile" s_vnc.txt ;;
+    udp/5060) append_result_file_section "$outfile" s_sip.txt && appended=0 ;;
+    tcp/5800|tcp/5801|tcp/5900|tcp/5901) append_result_file_section "$outfile" s_vnc.txt && appended=0 ;;
   esac
 
-  append_msf_result_files "$outfile" "$proto" "$port"
+  append_msf_result_files "$outfile" "$proto" "$port" && appended=0
+  [[ "$appended" -eq 0 ]] || append_base_scan_port_evidence "$outfile" "$proto" "$port"
 }
 
 generate_html_report() {

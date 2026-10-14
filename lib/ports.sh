@@ -150,6 +150,19 @@ open_targets_file_for_ports() {
   printf '%s' "$outfile"
 }
 
+port_has_targeted_followup() {
+  local proto="$1"
+  local port="$2"
+
+  case "${proto}/${port}" in
+    tcp/21|tcp/22|tcp/23|tcp/25|tcp/53|udp/53|tcp/80|tcp/81|tcp/88|tcp/110|tcp/111|udp/111|udp/123|tcp/135|udp/137|tcp/139|tcp/389|tcp/443|tcp/445|tcp/465|tcp/587|tcp/636|udp/161|udp/162|udp/500|udp/623|tcp/993|tcp/995|tcp/1433|tcp/1521|tcp/2049|tcp/3268|tcp/3269|tcp/3306|tcp/3389|tcp/5800|tcp/5801|tcp/5900|tcp/5901|tcp/8000|tcp/8009|tcp/8080|tcp/8443|udp/5060)
+      return 0
+      ;;
+  esac
+
+  return 1
+}
+
 all_open_target_ports() {
   local file
 
