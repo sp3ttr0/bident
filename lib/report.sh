@@ -9,6 +9,46 @@ html_escape_file() {
   ' "$1"
 }
 
+file_size_bytes() {
+  wc -c < "$1" | tr -d '[:space:]'
+}
+
+html_escape_file_preview() {
+  local file="$1"
+  local max_bytes="${REPORT_EVIDENCE_MAX_BYTES:-200000}"
+  local size
+  local head_bytes
+  local tail_bytes
+
+  size="$(file_size_bytes "$file")"
+  if [[ ! "$max_bytes" =~ ^[0-9]+$ || "$max_bytes" -eq 0 || "$size" -le "$max_bytes" ]]; then
+    html_escape_file "$file"
+    return
+  fi
+
+  head_bytes=$((max_bytes * 3 / 4))
+  tail_bytes=$((max_bytes - head_bytes))
+
+  head -c "$head_bytes" "$file" | awk '
+    {
+      gsub(/&/, "\\&amp;")
+      gsub(/</, "\\&lt;")
+      gsub(/>/, "\\&gt;")
+      print
+    }
+  '
+  printf '\n\n[ Bident truncated this evidence preview: %s bytes total, showing first %s bytes and last %s bytes. Open the source file above for the full output. ]\n\n' \
+    "$size" "$head_bytes" "$tail_bytes"
+  tail -c "$tail_bytes" "$file" | awk '
+    {
+      gsub(/&/, "\\&amp;")
+      gsub(/</, "\\&lt;")
+      gsub(/>/, "\\&gt;")
+      print
+    }
+  '
+}
+
 html_escape_text() {
   printf '%s' "$1" | awk '
     {
@@ -122,7 +162,7 @@ append_result_file_section() {
       printf '<summary>%s <span class="artifact-file">%s</span></summary>\n' "$(html_escape_text "$result_label")" "$(html_escape_text "$resolved_file")"
     fi
     printf '<pre>'
-    html_escape_file "$resolved_file"
+    html_escape_file_preview "$resolved_file"
     printf '</pre>\n'
     printf '</details>\n'
   } >> "$outfile"
@@ -295,7 +335,7 @@ append_finding_item() {
     fi
     printf '      </div></summary>\n'
     printf '      <pre class="finding-evidence">'
-    html_escape_file "$source_file"
+    html_escape_file_preview "$source_file"
     printf '</pre>\n'
     printf '    </details></li>\n'
   } >> "$outfile"
@@ -338,7 +378,7 @@ append_finding_glob_item() {
     printf '      <pre class="finding-evidence">'
     for source_file in "${files[@]}"; do
       printf '===== %s =====\n' "$(html_escape_text "$source_file")"
-      html_escape_file "$source_file"
+      html_escape_file_preview "$source_file"
       printf '\n'
     done
     printf '</pre>\n'
