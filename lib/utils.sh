@@ -11,9 +11,10 @@ finish_scan_timing() {
 }
 
 print_scan_timing() {
-  printf '%sStart Time:%s %s\n' "$CLR_CYAN" "$CLR_RESET" "$SCAN_STARTED_AT"
-  printf '%sFinish Time:%s %s\n' "$CLR_CYAN" "$CLR_RESET" "$SCAN_FINISHED_AT"
-  printf '%sRun Time (HH:MM:SS):%s %s\n' "$CLR_CYAN" "$CLR_RESET" "$SCAN_RUNTIME"
+  print_section 'Scan Timing'
+  print_summary_row 'Start Time:' "$SCAN_STARTED_AT"
+  print_summary_row 'Finish Time:' "$SCAN_FINISHED_AT"
+  print_summary_row 'Run Time (HH:MM:SS):' "$SCAN_RUNTIME" "${CLR_BOLD}${CLR_MAGENTA}"
 }
 
 die() {
@@ -234,14 +235,18 @@ print_final_summary() {
     msf_files="$(count_files_in_dir "$MSF_RESULT_DIR")"
   fi
 
-  printf '%sScan Summary%s\n' "$CLR_BOLD" "$CLR_RESET"
-  printf '%sResults Folder:%s %s\n' "$CLR_CYAN" "$CLR_RESET" "$PWD"
-  printf '%sScoped Hosts:%s %s\n' "$CLR_CYAN" "$CLR_RESET" "$scoped_hosts"
-  printf '%sLive Hosts/IPs:%s %s\n' "$CLR_CYAN" "$CLR_RESET" "$live_hosts"
-  printf '%sTotal Ports Open:%s %s\n' "$CLR_CYAN" "$CLR_RESET" "$open_rows"
-  printf '%sNmap Script Result Files:%s %s\n' "$CLR_CYAN" "$CLR_RESET" "$nse_files"
-  printf '%sExternal Tool Result Files:%s %s\n' "$CLR_CYAN" "$CLR_RESET" "$tool_files"
-  printf '%sMetasploit Result Files:%s %s\n' "$CLR_CYAN" "$CLR_RESET" "$msf_files"
-  [[ -f report.html ]] && printf '%sHTML Report:%s report.html\n' "$CLR_CYAN" "$CLR_RESET"
-  [[ -f summary.json ]] && printf '%sJSON Summary:%s summary.json\n' "$CLR_CYAN" "$CLR_RESET"
+  print_section 'Scan Summary'
+  print_summary_row 'Results Folder:' "$PWD"
+  print_summary_row 'Scoped Hosts:' "$scoped_hosts" "$CLR_YELLOW"
+  print_summary_row 'Live Hosts/IPs:' "$live_hosts" "$CLR_GREEN"
+  print_summary_row 'Total Ports Open:' "$open_rows" "${CLR_BOLD}${CLR_MAGENTA}"
+  print_summary_row 'Nmap Script Result Files:' "$nse_files" "$CLR_GREEN"
+  print_summary_row 'External Tool Result Files:' "$tool_files" "$CLR_GREEN"
+  print_summary_row 'Metasploit Result Files:' "$msf_files" "$CLR_GREEN"
+  if [[ -f report.html ]]; then
+    print_summary_row 'HTML Report:' 'report.html' "$CLR_BLUE"
+  fi
+  if [[ -f summary.json ]]; then
+    print_summary_row 'JSON Summary:' 'summary.json' "$CLR_BLUE"
+  fi
 }

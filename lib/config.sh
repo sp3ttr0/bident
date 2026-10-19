@@ -40,6 +40,10 @@ CLR_GREEN=""
 CLR_YELLOW=""
 CLR_CYAN=""
 CLR_BLUE=""
+CLR_GRAY=""
+CLR_WHITE=""
+CLR_BRIGHT_RED=""
+CLR_MAGENTA=""
 MENTIONED_TCP_PORTS=(
   21 22 23 25 53 80 81 88 110 111 135 139 389 443 445 465 587 636
   993 995 1433 1521 2049 3268 3269 3306 3389 5800 5801 5900 5901
@@ -58,7 +62,7 @@ OPTIONAL_TOOLS=(
   ike-scan responder msfconsole
 )
 
-if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
+if [[ -t 1 && -z "${NO_COLOR+x}" && "${TERM:-}" != dumb ]]; then
   CLR_RESET="$(printf '\033[0m')"
   CLR_BOLD="$(printf '\033[1m')"
   CLR_RED="$(printf '\033[31m')"
@@ -66,4 +70,8 @@ if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
   CLR_YELLOW="$(printf '\033[33m')"
   CLR_CYAN="$(printf '\033[36m')"
   CLR_BLUE="$(printf '\033[34m')"
+  CLR_GRAY="$(printf '\033[90m')"
+  CLR_WHITE="$(printf '\033[97m')"
+  CLR_BRIGHT_RED="$(printf '\033[91m')"
+  CLR_MAGENTA="$(printf '\033[95m')"
 fi

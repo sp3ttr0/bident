@@ -148,6 +148,7 @@ main() {
   require_root_scan_run
   
   print_banner
+  print_section 'Scan Configuration'
   printf '%sTiming Template:%s -%s\n' "$CLR_CYAN" "$CLR_RESET" "$TIMING"
   printf '%sHost Discovery Timeout:%s %s\n' "$CLR_CYAN" "$CLR_RESET" "${DISCOVERY_HOST_TIMEOUT_ARGS[1]}"
   if [[ "$TOOL_TIMEOUT" -gt 0 ]]; then
@@ -223,6 +224,7 @@ main() {
     start_responder
   fi
   
+  print_section 'Scope & Host Discovery'
   if [[ -n "$RESUME_DIR" && -s "$TARGETS_FILE" ]]; then
     printf '%sResuming With Scoped Targets File:%s %s\n' "$CLR_CYAN" "$CLR_RESET" "$TARGETS_FILE"
   else
@@ -266,7 +268,7 @@ main() {
     finish_scan_timing
     generate_html_report
     print_scan_timing
-    printf '%sScan Completed.%s\n' "$CLR_GREEN" "$CLR_RESET"
+    print_completion
     exit 0
   fi
   
@@ -285,12 +287,14 @@ main() {
   else
     printf '%sUDP Mode:%s Enabled\n' "$CLR_CYAN" "$CLR_RESET"
   fi
+  print_section 'Metasploit Checks'
   if [[ "$NO_MSF" == true ]]; then
     printf '%sMetasploit Mode:%s Disabled (--no-msf Enabled)\n' "$CLR_CYAN" "$CLR_RESET"
   else
     printf '%sMetasploit Mode:%s Enabled\n' "$CLR_CYAN" "$CLR_RESET"
   fi
   
+  print_section 'Base Port Scans'
   BASE_SCAN_SESSIONS=(syn con)
   BASE_SCAN_OUTPUTS=("${SCAN_DIR}/syn.gnmap" "${SCAN_DIR}/con.gnmap")
   if [[ "$NO_UDP" != true ]]; then
@@ -341,7 +345,7 @@ main() {
   generate_open_port_reports
   
   printf '%sBase Scans Finished.%s\n' "$CLR_GREEN" "$CLR_RESET"
-  printf '%sStart Vulnerability Scanning...%s\n' "$CLR_CYAN" "$CLR_RESET"
+  print_section 'Vulnerability Checks'
   
   run_if_open "FTP NSE" tcp "21" \
     nmap -d -n -sV "-${TIMING}" --min-rate "$NSE_MIN_RATE" --script 'ftp-* and not dos' -p 21 -oN ${NSE_DIR}/s_ftp.txt -iL "$(open_targets_file_for_ports tcp 21 ftp)" --open
@@ -452,6 +456,7 @@ main() {
   run_if_open "VNC NSE" tcp "5800,5801,5900,5901" \
     nmap -d -n -sV "-${TIMING}" --min-rate "$NSE_MIN_RATE" --script 'vnc-* and not dos' -p 5800,5801,5900,5901 -oN ${NSE_DIR}/s_vnc.txt -iL "$(open_targets_file_for_ports tcp 5800,5801,5900,5901 vnc)" --open
 
+  print_section 'Metasploit Checks'
   if [[ "$NO_MSF" == true ]]; then
     printf '%sSkipping Metasploit Auxiliary Checks:%s --no-msf Enabled\n' "$CLR_YELLOW" "$CLR_RESET"
   else
@@ -459,12 +464,13 @@ main() {
   fi
   
   finish_scan_timing
+  print_section 'Report Generation'
   generate_html_report
   generate_json_summary
   
   print_final_summary
   print_scan_timing
-  printf '%sScan Completed.%s\n' "$CLR_GREEN" "$CLR_RESET"
+  print_completion
   exit 0
   
 }

@@ -37,18 +37,23 @@ usage() {
     '  sudo ./bident.sh --resume bident_results_20260928_120000'
 }
 
+print_section() {
+  printf '\n%s%s== %s ==%s\n' "$CLR_BOLD" "$CLR_BRIGHT_RED" "$1" "$CLR_RESET"
+  printf '%s------------------------------------------------------------%s\n' "$CLR_GRAY" "$CLR_RESET"
+}
+
+print_summary_row() {
+  local value_color="${3:-$CLR_WHITE}"
+  printf '  %s%-29s%s %s%s%s\n' "$CLR_CYAN" "$1" "$CLR_RESET" "$value_color" "$2" "$CLR_RESET"
+}
+
+print_completion() {
+  printf '\n%s%s[+] Scan Completed.%s\n\n' "$CLR_BOLD" "$CLR_GREEN" "$CLR_RESET"
+}
+
 print_banner() {
-  local CLR_GRAY=""
-  local CLR_WHITE=""
-  local CLR_BRIGHT_RED=""
   local line=""
   local banner_width=42
-
-  if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
-    CLR_GRAY="$(printf '\033[90m')"
-    CLR_WHITE="$(printf '\033[97m')"
-    CLR_BRIGHT_RED="$(printf '\033[91m')"
-  fi
 
   banner_art() {
     cat <<'BIDENT_ART'

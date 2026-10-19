@@ -11,6 +11,10 @@ Completed scans show the start time, finish time (including timezone), and runti
 Timing covers discovery and scan checks, ending before report generation. When
 using `--resume`, timing covers the current invocation only.
 
+Terminal output uses red stage headings, cyan labels, colored summary values,
+and a highlighted runtime. Colors are disabled for redirected output, dumb
+terminals, or when `NO_COLOR` is set.
+
 ```text
 Network VAPT Toolkit
 by sp3ttr0
