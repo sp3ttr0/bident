@@ -1,3 +1,21 @@
+start_scan_timing() {
+  SCAN_STARTED_AT="$(date '+%Y-%m-%d %H:%M:%S %Z (%z)')"
+  SCAN_START_SECONDS=$SECONDS
+}
+
+finish_scan_timing() {
+  local elapsed=$((SECONDS - SCAN_START_SECONDS))
+  SCAN_FINISHED_AT="$(date '+%Y-%m-%d %H:%M:%S %Z (%z)')"
+  printf -v SCAN_RUNTIME '%02d:%02d:%02d' \
+    "$((elapsed / 3600))" "$((elapsed % 3600 / 60))" "$((elapsed % 60))"
+}
+
+print_scan_timing() {
+  printf '%sStart Time:%s %s\n' "$CLR_CYAN" "$CLR_RESET" "$SCAN_STARTED_AT"
+  printf '%sFinish Time:%s %s\n' "$CLR_CYAN" "$CLR_RESET" "$SCAN_FINISHED_AT"
+  printf '%sRun Time (HH:MM:SS):%s %s\n' "$CLR_CYAN" "$CLR_RESET" "$SCAN_RUNTIME"
+}
+
 die() {
   printf '%sError:%s %s\n' "$CLR_RED" "$CLR_RESET" "$*" >&2
   exit 1

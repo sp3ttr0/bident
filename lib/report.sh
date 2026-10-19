@@ -1506,6 +1506,12 @@ HTML
     printf '    </div>\n'
     printf '    <button class="theme-toggle" type="button" id="themeToggle" aria-label="Toggle dark mode" title="Toggle theme">☾</button>\n'
     printf '  </header>\n'
+    printf '  <section class="notice" aria-label="Scan timing">\n'
+    printf '    <strong>Scan Timing</strong>\n'
+    printf '    <p>Start Time: %s</p>\n' "$(html_escape_text "${SCAN_STARTED_AT:-Unavailable}")"
+    printf '    <p>Finish Time: %s</p>\n' "$(html_escape_text "${SCAN_FINISHED_AT:-Unavailable}")"
+    printf '    <p>Run Time (HH:MM:SS): %s</p>\n' "$(html_escape_text "${SCAN_RUNTIME:-Unavailable}")"
+    printf '  </section>\n'
     printf '  <section class="metrics">\n'
     printf '    <div class="metric"><strong>%s</strong><span>Scoped Hosts/IPs</span></div>\n' "$scope_count"
     printf '    <div class="metric"><strong>%s</strong><span>Live Hosts/IPs</span></div>\n' "$live_count"

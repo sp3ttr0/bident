@@ -216,6 +216,7 @@ main() {
   fi
   mkdir -p "$SCAN_DIR" "$NSE_DIR" "$TOOL_DIR" "$LOG_DIR"
   allow_unprivileged_output_writes
+  start_scan_timing
   
   if [[ "$RUN_RESPONDER" == true ]]; then
     ensure_screen_sessions_available responder
@@ -262,6 +263,9 @@ main() {
     printf '%sNo Live Hosts/IPs Was Found.%s\n' "$CLR_YELLOW" "$CLR_RESET"
     printf '%sLive Targets File:%s %s\n' "$CLR_CYAN" "$CLR_RESET" "$LIVE_TARGETS_FILE"
     printf '%sNothing More To Scan. Exiting.%s\n' "$CLR_YELLOW" "$CLR_RESET"
+    finish_scan_timing
+    generate_html_report
+    print_scan_timing
     printf '%sScan Completed.%s\n' "$CLR_GREEN" "$CLR_RESET"
     exit 0
   fi
@@ -454,10 +458,12 @@ main() {
     run_msf_auxiliary_checks
   fi
   
+  finish_scan_timing
   generate_html_report
   generate_json_summary
   
   print_final_summary
+  print_scan_timing
   printf '%sScan Completed.%s\n' "$CLR_GREEN" "$CLR_RESET"
   exit 0
   
