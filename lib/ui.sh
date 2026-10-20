@@ -118,6 +118,7 @@ BIDENT_ART
       padding=$(((banner_width - text_length) / 2))
       padding=$((padding > 3 ? padding - 3 : 0))
     fi
+    padding=$((padding + 2))
 
     printf '%*s%s%s%s\n' "$padding" "" "$color" "$text" "$CLR_RESET"
   }

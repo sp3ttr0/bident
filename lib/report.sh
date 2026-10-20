@@ -457,24 +457,56 @@ credential_candidate_lines() {
       gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
       return value
     }
-    function is_credential_line(value, lowered) {
+    function is_credential_line(value, lowered, field, token) {
       lowered = tolower(value)
-      if (lowered ~ /(^|[^[:alnum:]_-])(user(name)?|login|account|acct|password|passwd|pwd|credential|credentials|hash|secret|token)[[:space:]]*[:=][[:space:]]*[^[:space:]&;,<>]+/) {
+      sub(/^\|[_ ]*[[:space:]]*/, "", lowered)
+      sub(/^\[[+*!-]\][[:space:]]*/, "", lowered)
+      # Rejected attempts and diagnostic/help text are not discoveries.
+      if (lowered ~ /^(error|warning|usage|example|command|debug|failed|invalid|testing|trying|attempting)([[:space:]:]|$)/ ||
+          lowered ~ /(login|authentication|access)[[:space:]]+(failed|failure|denied|disabled|not allowed)/ ||
+          lowered ~ /(invalid|incorrect|rejected)[[:space:]]+(credentials|password)|credentials[[:space:]]+(invalid|rejected|not found)/ ||
+          lowered ~ /no[[:space:]]+(valid[[:space:]]+)?credentials/ ||
+          lowered ~ /status_logon_failure|nt_status_logon_failure/) return 0
+
+      # Require an actual field, rather than a URL parameter, script name,
+      # NTLM domain metadata, or a mention of credential terminology.
+      if (lowered ~ /^(user(name)?|login|account|acct|password|passwd|pwd|credential|credentials|hash|secret|token)[[:space:]]*[:=]/) {
+        field = lowered
+        sub(/[:=].*$/, "", field)
+        token = lowered
+        sub(/^[^:=]*[:=][[:space:]]*/, "", token)
+        sub(/[[:space:],;].*$/, "", token)
+        if (token == "" || token ~ /^(none|null|nil|n\/a|unknown|redacted|disabled|required|not|false|true|\*+|x{4,}|<[^>]*>|\[[^]]*\])$/) return 0
         return 1
       }
-      if (lowered ~ /[?&](user(name)?|login|account|acct|password|passwd|pwd|token)=/) {
-        return 1
-      }
-      if (lowered ~ /(anonymous[[:space:]_-]*(login|access|ftp)|valid[[:space:]_-]+credentials|empty[[:space:]_-]+password|default[[:space:]_-]+credentials)/) {
-        return 1
-      }
-      if (lowered ~ /ntlm/ && lowered ~ /(user|account|domain|hash|credential)/) {
-        return 1
-      }
+      if (lowered ~ /(anonymous[[:space:]_-]*(login|access|ftp).*(allowed|enabled|successful)|valid[[:space:]_-]+credentials[[:space:]]*[:=]|login successful|authentication successful|empty[[:space:]_-]+password.*(allowed|enabled|found)|default[[:space:]_-]+credentials.*(found|valid|accepted))/) return 1
       return 0
     }
     {
       line = trim($0)
+      # Nmap headers and echoed invocations describe requested checks,
+      # not discovered credentials (for example --script-args user=...).
+      if (line ~ /^#/ || tolower(line) ~ /(^|[[:space:]])([^[:space:]]*\/)?nmap([[:space:]]|$)/) {
+        in_mysql_users = 0
+        next
+      }
+      if (line ~ /^\|[ _]*mysql-users:[[:space:]]*$/) {
+        in_mysql_users = 1
+        next
+      }
+      if (in_mysql_users) {
+        # Only indented, single-name entries belong to this NSE list.
+        # Stop at another script, host, port, or non-list output line.
+        if (line ~ /^\|[_ ]?[[:space:]]+[^[:space:]:]+[[:space:]]*$/) {
+          username = line
+          sub(/^\|[_ ]?[[:space:]]+/, "", username)
+          username = trim(username)
+          print NR "\034" username "\034username: " username
+          if (line ~ /^\|_/) in_mysql_users = 0
+          next
+        }
+        in_mysql_users = 0
+      }
       if (line != "" && is_credential_line(line)) {
         print NR "\034" line
       }
@@ -589,11 +621,13 @@ append_credential_summary_section() {
   for file in "${NSE_DIR}"/*.txt "${TOOL_DIR}"/*.txt "${MSF_RESULT_DIR}"/*.txt; do
     [[ -s "$file" ]] || continue
     file_label="$(default_result_label "$file")"
-    while IFS=$'\034' read -r line_number line_text; do
+    while IFS=$'\034' read -r line_number line_text display_value; do
       [[ -n "${line_text:-}" ]] || continue
       total_count=$((total_count + 1))
       [[ "$total_count" -le "$max_items" ]] || continue
-      display_value="$(credential_display_value "$line_text")"
+      if [[ -z "$display_value" ]]; then
+        display_value="$(credential_display_value "$line_text")"
+      fi
       {
         printf '    <li><details class="finding-panel">\n'
         printf '      <summary><span class="finding-severity">Review</span><div><strong>%s</strong><span>%s</span><p>%s:%s</p></div></summary>\n' \
@@ -610,7 +644,7 @@ append_credential_summary_section() {
   {
     printf '  <h2>Possible Usernames / Credentials</h2>\n'
     if [[ -s "$temp_file" ]]; then
-      printf '  <p class="muted">These lines were extracted from tool output using credential-related keywords and should be manually verified.</p>\n'
+      printf '  <p class="muted">These entries were extracted from tool output using credential-related keywords and username enumeration lists. Usernames alone do not confirm valid credentials; entries should be manually verified.</p>\n'
       printf '  <ul class="finding-list credential-list">\n'
       cat "$temp_file"
       printf '  </ul>\n'
