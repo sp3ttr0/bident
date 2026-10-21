@@ -91,7 +91,7 @@ result_output_has_finding() {
 
   case "$label" in
     "Weak SSH Ciphers")
-      grep -Eiq '\(fail\)|\[fail\]|\(warn\)|\[warn\]|(^|[^[:alnum:]])(weak|deprecated|insecure|cbc|arcfour|3des|blowfish|rijndael|diffie-hellman-group1|diffie-hellman-group14-sha1|ssh-rsa|dss|md5|sha-?1)([^[:alnum:]]|$)' "$result_file"
+      [[ -n "$(ssh_weak_cipher_rows "$result_file" 'current-target:22')" ]]
       ;;
     "Exposed RPC Services")
       grep -Eiq '(^Protocol:|^Provider:|^[[:space:]]*[0-9a-fA-F-]{36}|ncacn_|MS-RPCE|uuid)' "$result_file" &&
@@ -257,6 +257,7 @@ run_ssh_audit_check() {
   local finding_found=false
   local total_targets=0
   local completed_targets=0
+  rm -f "${TOOL_DIR}/ssh_weak_cipher_targets.txt"
 
   if ! has_open_port tcp 22; then
     return
@@ -295,6 +296,9 @@ run_ssh_audit_check() {
 
   if [[ "$finding_found" == true ]]; then
     printf '%sWeak SSH Ciphers Found%s\n' "$CLR_GREEN" "$CLR_RESET"
+    ssh_weak_cipher_rows "${TOOL_DIR}/ssh-audit_results.txt" | cut -f1 | sort -u > "${TOOL_DIR}/ssh_weak_cipher_targets.txt"
+    printf '%sAffected SSH Targets (IP:Port):%s\n' "$CLR_CYAN" "$CLR_RESET"
+    awk '{print "  " $0}' "${TOOL_DIR}/ssh_weak_cipher_targets.txt"
   else
     rm -f ${TOOL_DIR}/ssh-audit_results.txt
     printf '%sNo Weak SSH Ciphers Found%s\n' "$CLR_YELLOW" "$CLR_RESET"

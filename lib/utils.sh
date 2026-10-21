@@ -1,3 +1,41 @@
+# Emit unique endpoint/cipher pairs from ssh-audit encryption findings only.
+# The optional endpoint identifies live per-target output without a header.
+ssh_weak_cipher_rows() {
+  local file="$1" default_endpoint="${2:-}"
+  awk -v endpoint="$default_endpoint" '
+    BEGIN { esc = sprintf("%c", 27) }
+    function set_endpoint(target, port) {
+      gsub(/\\/, "", target)
+      if (target ~ /^\[[^]]+\]:[0-9]+$/ || target ~ /^[^:]+:[0-9]+$/) return target
+      if (target ~ /:/ && target !~ /^\[/) return "[" target "]:" port
+      return target ":" port
+    }
+    {
+      gsub(esc "\\[[0-?]*[ -/]*[@-~]", "")
+      gsub(/\[[0-9;]*m/, "")
+      if ($0 ~ /^===== /) { endpoint = ""; cipher = ""; next }
+      if ($0 ~ /^Command:/) {
+        endpoint = ""; cipher = ""; target = ""; port = "22"; command_seen = 0
+        for (i = 2; i <= NF; i++) {
+          if ($i ~ /(^|\/)ssh-audit$/) { command_seen = 1; continue }
+          if (!command_seen) continue
+          if ($i == "-p" || $i == "--port") { port = $(++i); continue }
+          if ($i ~ /^--port=/) { port = $i; sub(/^--port=/, "", port); continue }
+          if ($i !~ /^-/) target = $i
+        }
+        if (command_seen && target != "" && port ~ /^[0-9]+$/ && port > 0 && port <= 65535) endpoint = set_endpoint(target, port)
+        next
+      }
+      if ($0 ~ /^\(enc\)[[:space:]]+/) cipher = $2
+      else if ($0 ~ /^\(/ || $0 ~ /^#/) cipher = ""
+      if (endpoint != "" && cipher != "" && $0 ~ /\[(fail|warn)\]/) {
+        key = endpoint SUBSEP cipher
+        if (!seen[key]++) print endpoint "\t" cipher
+      }
+    }
+  ' "$file"
+}
+
 start_scan_timing() {
   SCAN_STARTED_AT="$(date '+%Y-%m-%d %H:%M:%S %Z (%z)')"
   SCAN_START_SECONDS=$SECONDS

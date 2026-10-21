@@ -171,6 +171,19 @@ Failures and nonzero process exits are listed under **Core Artifacts → Metaspl
 Failed / Incomplete Checks**, with execution-log links. A genuine result for one
 target is retained even if another target fails in the same module output.
 
+The Weak SSH Ciphers finding groups affected IP:port endpoints with their cipher
+names. Only encryption (`enc`) warnings/failures qualify; key-exchange, host-key,
+or MAC warnings alone do not. The terminal also prints affected endpoints and
+saves them to `tool_results/ssh_weak_cipher_targets.txt`.
+
+Other Findings Summary cards also show deduplicated affected IP:port lists.
+Endpoints must be tied to a positive result line or a successful single-target
+command block; target-list inputs and command echoes are never counted as
+affected endpoints. Unattributable, failed, or ambiguous output remains available
+in Core Artifacts but is omitted from verified finding lists. In particular,
+the existing DNSSEC check records a missing AD flag, which is insufficient to
+promote a target to a verified “DNSSEC not configured” finding.
+
 ```text
 base_scans/              SYN, connect, and UDP Nmap base scan outputs.
 nmap_scripts/            Targeted Nmap NSE result files.

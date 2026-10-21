@@ -364,7 +364,7 @@ finding_file_has_verified_evidence() {
 
   case "$title" in
     "Weak SSH Ciphers")
-      grep -Eiq '\(fail\)|\[fail\]|\(warn\)|\[warn\]|(^|[^[:alnum:]])(weak|deprecated|insecure|cbc|arcfour|3des|blowfish|rijndael|diffie-hellman-group1|diffie-hellman-group14-sha1|ssh-rsa|dss|md5|sha-?1)([^[:alnum:]]|$)' "$source_file"
+      [[ -n "$(ssh_weak_cipher_rows "$source_file")" ]]
       ;;
     "Exposed RPC Services")
       grep -Eiq '(^Protocol:|^Provider:|^[[:space:]]*[0-9a-fA-F-]{36}|ncacn_|MS-RPCE|uuid)' "$source_file" &&
@@ -399,6 +399,142 @@ finding_file_has_verified_evidence() {
   esac
 }
 
+append_ssh_weak_cipher_finding() {
+  local outfile="$1" source_file="${TOOL_DIR}/ssh-audit_results.txt"
+  local rows target ciphers target_count
+  [[ -s "$source_file" ]] || return 0
+  rows="$(ssh_weak_cipher_rows "$source_file" | awk -F '\t' '
+    !seen[$1 SUBSEP $2]++ {
+      if (!($1 in ciphers)) order[++n] = $1
+      ciphers[$1] = ciphers[$1] (ciphers[$1] == "" ? "" : ", ") $2
+    }
+    END {for (i = 1; i <= n; i++) print order[i] "\t" ciphers[order[i]]}
+  ')"
+  [[ -n "$rows" ]] || return 0
+  target_count="$(printf '%s\n' "$rows" | awk 'END {print NR}')"
+  {
+    printf '    <li><details class="finding-panel">\n'
+    printf '      <summary><span class="finding-severity">Review</span><div><strong>Weak SSH Ciphers</strong><span>%s affected target(s)</span></div></summary>\n' "$target_count"
+    printf '      <p class="muted">Targets with encryption cipher warnings or failures from ssh-audit. Key-exchange, host-key, and MAC warnings alone are excluded.</p>\n'
+    printf '      <div class="service-table-wrap"><table class="service-table"><thead><tr><th>Target IP:Port</th><th>Weak Ciphers</th></tr></thead><tbody>\n'
+    while IFS=$'\t' read -r target ciphers; do
+      printf '        <tr><td>%s</td><td>%s</td></tr>\n' "$(html_escape_text "$target")" "$(html_escape_text "$ciphers")"
+    done <<< "$rows"
+    printf '      </tbody></table></div>\n'
+    printf '      <details class="artifact"><summary>SSH Audit Evidence</summary><pre class="finding-evidence">'
+    html_escape_file_preview "$source_file"
+    printf '</pre></details>\n'
+    printf '    </details></li>\n'
+  } >> "$outfile"
+}
+
+verified_ip_port_lines() {
+  awk '
+    function valid_ip(ip, parts, n, j, compressed, count, rest) {
+      if (ip ~ /:/) {
+        if (ip !~ /^[0-9a-fA-F:]+$/ || ip ~ /:::/) return 0
+        compressed = index(ip, "::") > 0
+        rest = ip; sub(/::/, "X", rest)
+        if (rest ~ /::/) return 0
+        if (!compressed && (ip ~ /^:/ || ip ~ /:$/)) return 0
+        n = split(ip, parts, ":"); count = 0
+        for (j = 1; j <= n; j++) {
+          if (length(parts[j]) > 4) return 0
+          if (parts[j] != "") count++
+        }
+        return compressed ? count < 8 : count == 8
+      }
+      n = split(ip, parts, ".")
+      if (n != 4) return 0
+      for (j = 1; j <= n; j++) if (parts[j] !~ /^[0-9]+$/ || parts[j] > 255) return 0
+      return 1
+    }
+    {
+      endpoint = $0; ip = endpoint; port = endpoint
+      if (endpoint ~ /^\[/) { sub(/^\[/, "", ip); sub(/\]:[0-9]+$/, "", ip); sub(/^.*\]:/, "", port) }
+      else { sub(/:[0-9]+$/, "", ip); sub(/^.*:/, "", port); if (ip ~ /:/) next }
+      if (port ~ /^[0-9]+$/ && port > 0 && port <= 65535 && valid_ip(ip) && !seen[endpoint]++) print endpoint
+    }
+  '
+}
+
+# Extract endpoints only from the same command block as verified evidence.
+# Never promote a scope/targets file or an unrelated banner IP to a finding.
+tool_finding_endpoints() {
+  local title="$1" file="$2"
+  html_escape_stream < "$file" | awk -v title="$title" '
+    function valid_ip(ip, parts, n, j) {
+      if (ip ~ /:/) return ip ~ /^[0-9a-fA-F:]+$/ && ip ~ /:.*:/
+      n = split(ip, parts, ".")
+      if (n != 4) return 0
+      for (j = 1; j <= n; j++) if (parts[j] !~ /^[0-9]+$/ || parts[j] > 255) return 0
+      return 1
+    }
+    function emit(ip, port, key) {
+      if (!valid_ip(ip) || port !~ /^[0-9]+$/ || port < 1 || port > 65535) return
+      key = (ip ~ /:/ ? "[" ip "]" : ip) ":" port
+      if (!seen[key]++) print key
+    }
+    function flush() {
+      if (!error && positive && permitted) emit(host, port)
+      host = ""; port = ""; positive = 0; error = 0; permitted = 0; dns_answer = 0; dns_ok = 0; dns_ra = 0; handshake = 0; weak = 0
+    }
+    /^===== / { flush(); next }
+    /^Command:/ {
+      flush()
+      command = $0
+      if (title == "Exposed RPC Services" && command ~ /(^|[\/[:space:]])impacket-rpcdump[[:space:]]/) { host = $NF; port = 135; permitted = 1 }
+      if (title == "Unauthenticated Remote Procedure Call" && command ~ /(^|[\/[:space:]])rpcclient[[:space:]]/ && command ~ / -N([[:space:]]|$)/ && command ~ / -U[[:space:]]+(\047\047|"")([[:space:]]|$)/) { host = $NF; port = 445; permitted = 1 }
+      if (title == "LDAP Anonymous Bind" && command ~ /ldapsearch[[:space:]]/ && command ~ / -x([[:space:]]|$)/ && command !~ / -(D|w|W|y|Y|U)([[:space:]]|$)/) {
+        for (i = 1; i <= NF; i++) if ($i ~ /^ldap:\/\//) {
+          uri = $i; sub(/^ldap:\/\//, "", uri); sub(/\/$/, "", uri)
+          host = uri; sub(/:[0-9]+$/, "", host)
+          port = uri; sub(/^.*:/, "", port); permitted = 1
+        }
+      }
+      if (title == "DNS Recursion Enabled" && command ~ /(^|[[:space:]])dig[[:space:]]/ && command ~ /google[.]com/) {
+        for (i = 1; i <= NF; i++) if ($i ~ /^@/) { host = substr($i, 2); port = 53; permitted = 1 }
+      }
+      if (title == "IKE VPN Peer Weak Encryption" && command ~ /(^|[[:space:]])ike-scan[[:space:]]/) { host = $NF; port = 500; permitted = 1 }
+      for (i = 1; i < NF; i++) if ($i == "-p") port = $(i + 1)
+      gsub(/[\\\[\]]/, "", host)
+      next
+    }
+    {
+      lower = tolower($0)
+      if (lower ~ /connection refused|cannot connect|no route to host|timed out|nt_status_|invalid credentials|ldap_bind:|(^|[[:space:]])(error|failed|failure|exception)([[:space:]:]|$)/) error = 1
+      if (title == "Exposed RPC Services" && $0 ~ /^(Protocol:|Provider:)|ncacn_|^[[:space:]]*[0-9a-fA-F-]{36}/) positive = 1
+      if (title == "Unauthenticated Remote Procedure Call" && $0 ~ /Se[A-Za-z]+Privilege/) positive = 1
+      if (title == "LDAP Anonymous Bind" && $0 ~ /^(dn:|namingContexts:|defaultNamingContext:|rootDomainNamingContext:|supportedLDAPVersion:|supportedSASLMechanisms:)/) positive = 1
+      if (title == "DNS Recursion Enabled") {
+        if ($0 ~ /status: NOERROR/) dns_ok = 1
+        if ($0 ~ /ANSWER: [1-9][0-9]*/) dns_answer = 1
+        if ($0 ~ /flags:.*[[:space:]]rd[;[:space:]]/ && $0 ~ /flags:.*[[:space:]]ra[;[:space:]]/) dns_ra = 1
+        positive = dns_ok && dns_answer && dns_ra
+      }
+      if (title == "IKE VPN Peer Weak Encryption") {
+        if ($1 == host && lower ~ /handshake returned/ && lower !~ /no handshake/) handshake = 1
+        if (lower ~ /sa=/ && lower ~ /(enc|hash|group).*(3des|md5|sha1|sha-1|modp768|modp1024|group[[:space:]]*[12]([^0-9]|$))/) weak = 1
+        positive = handshake && weak
+      }
+      # NetExec identifies host and actual port on each result line. Ignore
+      # the command header, which commonly contains a whole targets file.
+      if ($1 == "SMB" && ((title == "Misconfigured Server Message Block Signing" && $0 ~ /signing:False/) || (title == "SMBv1 Enabled" && $0 ~ /SMBv1:True/))) emit($2, $3)
+    }
+    END { flush() }
+  ' | verified_ip_port_lines
+}
+
+append_affected_endpoint_list() {
+  local endpoints="$1" target target_count
+  target_count="$(printf '%s\n' "$endpoints" | awk 'NF {count++} END {print count + 0}')"
+  printf '      <details class="artifact target-panel" open><summary>Affected IP:Port (%s)</summary><pre class="targets">' "$target_count"
+  while IFS= read -r target; do
+    [[ -n "$target" ]] && printf '%s\n' "$(html_escape_text "$target")"
+  done <<< "$endpoints"
+  printf '</pre></details>\n'
+}
+
 append_finding_item() {
   local outfile="$1"
   local severity="$2"
@@ -406,9 +542,11 @@ append_finding_item() {
   local source_file="$4"
   local detail="${5:-}"
   local count=0
+  local endpoints
 
   [[ -s "$source_file" ]] || return 0
-  finding_file_has_verified_evidence "$title" "$source_file" || return 0
+  endpoints="$(tool_finding_endpoints "$title" "$source_file")"
+  [[ -n "$endpoints" ]] || return 0
   count="$(finding_count_for_file "$source_file")"
 
   {
@@ -419,6 +557,7 @@ append_finding_item() {
       printf '        <p>%s</p>\n' "$(html_escape_text "$detail")"
     fi
     printf '      </div></summary>\n'
+    append_affected_endpoint_list "$endpoints"
     printf '      <pre class="finding-evidence">'
     html_escape_file_preview "$source_file"
     printf '</pre>\n'
@@ -429,12 +568,40 @@ append_finding_item() {
 # Only explicit module result messages qualify as Metasploit findings.
 # The HTML renderer also normalizes ANSI sequences before classification.
 msf_finding_lines() {
-  local file="$1" kind="${1##*/}"
-  html_escape_stream < "$file" | awk -v kind="$kind" '
+  local file="$1" kind="${1##*/}" mode="${2:-evidence}" port=""
+  if [[ "$kind" =~ _(tcp|udp)_([0-9]+)[.]txt$ ]]; then port="${BASH_REMATCH[2]}"; fi
+  html_escape_stream < "$file" | awk -v kind="$kind" -v mode="$mode" -v default_port="$port" '
+    function endpoint_from_message(message, ip, port, n, parts, j) {
+      sub(/^\[[+*]\][[:space:]]*/, "", message)
+      sub(/^Detected RDP on[[:space:]]+/, "", message)
+      sub(/[,[:space:]].*$/, "", message)
+      ip = message; port = default_port
+      if (ip ~ /^\[[0-9a-fA-F:]+\]:[0-9]+$/) {
+        port = ip; sub(/^.*\]:/, "", port); sub(/\]:[0-9]+$/, "", ip); sub(/^\[/, "", ip)
+      } else if (ip ~ /^[0-9.]+:[0-9]+$/) {
+        port = ip; sub(/^.*:/, "", port); sub(/:[0-9]+$/, "", ip)
+      }
+      if (port !~ /^[0-9]+$/ || port < 1 || port > 65535) return ""
+      if (ip ~ /:/) {
+        if (ip !~ /^[0-9a-fA-F:]+$/ || ip !~ /:.*:/) return ""
+        return "[" ip "]:" port
+      }
+      n = split(ip, parts, ".")
+      if (n != 4) return ""
+      for (j = 1; j <= 4; j++) if (parts[j] !~ /^[0-9]+$/ || parts[j] > 255) return ""
+      return ip ":" port
+    }
+
     {
       line = $0
       lower = tolower(line)
-      if (lower ~ /^[[:space:]]*resource[[:space:](]/ || lower ~ / => /) next
+      if (lower ~ /^[[:space:]]*resource[[:space:](]/ || lower ~ / => /) { context = ""; next }
+      if (line ~ /^\[[+*-]\]/) context = ""
+      if (kind ~ /^snmp_enumshares_/ && line ~ /^\[\+\]/) context = endpoint_from_message(line)
+      if (kind ~ /^snmp_enum_/ && lower ~ /^[[:space:]]*host ip[[:space:]]*:/) {
+        context_line = line; sub(/^[^:]*:[[:space:]]*/, "", context_line)
+        context = endpoint_from_message(context_line)
+      }
       if (lower ~ /^\[-\]/ || lower ~ /not vulnerable|not likely vulnerable|does not appear vulnerable|not exploitable|not (an )?open (smtp )?relay|no anonymous|anonymous.*(denied|disabled|not allowed)/) { shares = 0; next }
       good = (line ~ /^\[\+\]/)
       result = (line ~ /^\[[+*]\]/)
@@ -456,9 +623,16 @@ msf_finding_lines() {
         # alone are not. Metasploit prints these as indented table rows.
         found = lower ~ /^[[:space:]]*(hostname|description|contact|location|uptime (snmp|system))[[:space:]]*:[[:space:]]*[^[:space:]-]/
       }
-      if (found) print line
+      if (found) {
+        endpoint = endpoint_from_message(line)
+        if (endpoint == "" && kind ~ /^snmp_enum(shares)?_/) endpoint = context
+        if (endpoint == "") next
+        if (mode == "endpoints") {
+          if (!seen[endpoint]++) print endpoint
+        } else print line
+      }
     }
-  '
+  ' | if [[ "$mode" == endpoints ]]; then verified_ip_port_lines; else cat; fi
 }
 
 msf_failure_lines() {
@@ -512,17 +686,21 @@ append_finding_glob_item() {
   local source_file
   local files=()
   local count=0
-  local evidence_count
+  local evidence_count endpoints="" file_endpoints
 
   for source_file in $source_pattern; do
     [[ -s "$source_file" ]] || continue
     evidence_count="$(msf_finding_lines "$source_file" | awk 'END {print NR + 0}')"
     [[ "$evidence_count" -gt 0 ]] || continue
+    file_endpoints="$(msf_finding_lines "$source_file" endpoints)"
+    [[ -n "$file_endpoints" ]] || continue
+    endpoints="${endpoints}${file_endpoints}"$'\n'
     files+=("$source_file")
     count=$((count + evidence_count))
   done
 
   [[ "${#files[@]}" -gt 0 ]] || return 0
+  endpoints="$(printf '%s' "$endpoints" | sort -u)"
 
   {
     printf '    <li><details class="finding-panel">\n'
@@ -532,6 +710,7 @@ append_finding_glob_item() {
       printf '        <p>%s</p>\n' "$(html_escape_text "$detail")"
     fi
     printf '      </div></summary>\n'
+    append_affected_endpoint_list "$endpoints"
     printf '      <pre class="finding-evidence">'
     for source_file in "${files[@]}"; do
       printf '===== %s =====\n' "$(html_escape_text "$source_file")"
@@ -625,7 +804,7 @@ append_findings_summary_section() {
   local temp_file
 
   temp_file="$(mktemp "${TMPDIR:-/tmp}/bident_findings.XXXXXX")"
-  append_finding_item "$temp_file" "Review" "Weak SSH Ciphers" "${TOOL_DIR}/ssh-audit_results.txt"
+  append_ssh_weak_cipher_finding "$temp_file"
   append_finding_item "$temp_file" "Review" "Exposed RPC Services" "${TOOL_DIR}/s_rpcdump_135.txt"
   append_finding_item "$temp_file" "Review" "Unauthenticated Remote Procedure Call" "${TOOL_DIR}/s_rpcclient_135.txt"
   append_finding_item "$temp_file" "Review" "Misconfigured Server Message Block Signing" "${TOOL_DIR}/nxc_smb_signing_false.txt" "Possible Server Message Block (SMB) relay attack exposure."
