@@ -5,21 +5,63 @@ bident_results_*/
 base_scans/
 nmap_scripts/
 tool_results/
+metasploit/
 logs/
 targets_with_open_ports/
 report.html
+summary.json
+
+# Conventional custom output folders (for -o/--output-dir).
+results/
+scan_results/
+scan-results/
+output/
+reports/
+captures/
 
 # Scope and target files can contain sensitive client/internal data.
 scope.txt
 targets.txt
 targets_live.txt
 single_target_scope.txt
+scope_*.txt
+scope-*.txt
+*.scope
+targets_*.txt
+targets-*.txt
+
+# Local secrets and exported credential material. Keep test fixtures synthetic.
+secrets/
+credentials/
+credentials.*
+credentials_*
+creds.*
+creds_*
+passwords.*
+passwords_*
+hashes.*
+hashes_*
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa
+id_ed25519
 
 # Nmap output formats, if generated at the repository root.
 *.gnmap
 *.nmap
 *.xml
 *.screen.log
+*.log
+*.pcap
+*.pcapng
+*.cap
+*.pot
+*.potfile
 
 # Temporary local checks
 .bident_*_check/
