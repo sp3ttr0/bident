@@ -297,8 +297,6 @@ run_ssh_audit_check() {
   if [[ "$finding_found" == true ]]; then
     printf '%sWeak SSH Ciphers Found%s\n' "$CLR_GREEN" "$CLR_RESET"
     ssh_weak_cipher_rows "${TOOL_DIR}/ssh-audit_results.txt" | cut -f1 | sort -u > "${TOOL_DIR}/ssh_weak_cipher_targets.txt"
-    printf '%sAffected SSH Targets (IP:Port):%s\n' "$CLR_CYAN" "$CLR_RESET"
-    awk '{print "  " $0}' "${TOOL_DIR}/ssh_weak_cipher_targets.txt"
   else
     rm -f ${TOOL_DIR}/ssh-audit_results.txt
     printf '%sNo Weak SSH Ciphers Found%s\n' "$CLR_YELLOW" "$CLR_RESET"
@@ -372,6 +370,17 @@ run_dns_dig_checks() {
   [[ -s "$recursion_file" ]] || rm -f "$recursion_file"
 }
 
+run_ssl_checks() {
+  if command_available testssl || command_available sslscan; then
+    printf '%sSSL/TLS Mode:%s External tools available; skipping SSL/TLS NSE fallback.\n' "$CLR_CYAN" "$CLR_RESET"
+    run_ssl_external_checks
+  else
+    printf '%sSSL/TLS Mode:%s Neither testssl nor sslscan found; using NSE fallback.\n' "$CLR_YELLOW" "$CLR_RESET"
+    run_if_open "SSL/TLS NSE" tcp "443,465,587,636,993,995,3269,3389,8443" \
+      nmap -d -n -sV "-${TIMING}" --script-timeout "$SCRIPT_TIMEOUT" --min-rate "$NSE_MIN_RATE" --script 'ssl-* and not dos' -p 443,465,587,636,993,995,3269,3389,8443 -oN "${NSE_DIR}/ssl_tls_results.txt" -iL "$(open_targets_file_for_ports tcp 443,465,587,636,993,995,3269,3389,8443 ssl_tls)" --open
+  fi
+}
+
 run_ssl_external_checks() {
   local found=false
   local has_testssl=false
@@ -416,7 +425,7 @@ run_ssl_external_checks() {
   total_targets="${#ssl_targets[@]}"
 
   if [[ "$has_testssl" == true ]]; then
-    printf '%sRunning testssl%s\n' "$CLR_CYAN" "$CLR_RESET"
+    printf '%sRunning testssl (Primary SSL/TLS Check)%s\n' "$CLR_CYAN" "$CLR_RESET"
     completed_targets=0
     print_progress_bar "testssl Progress" "$completed_targets" "$total_targets"
     for entry in "${ssl_targets[@]}"; do
@@ -427,7 +436,7 @@ run_ssl_external_checks() {
   fi
 
   if [[ "$has_sslscan" == true ]]; then
-    printf '%sRunning sslscan%s\n' "$CLR_CYAN" "$CLR_RESET"
+    printf '%sRunning sslscan (SSL/TLS Cross-check)%s\n' "$CLR_CYAN" "$CLR_RESET"
     completed_targets=0
     print_progress_bar "sslscan Progress" "$completed_targets" "$total_targets"
     for entry in "${ssl_targets[@]}"; do

@@ -155,6 +155,12 @@ sudo ./bident.sh --resume bident_results_20260928_120000
 
 ## Output Layout
 
+TLS checks run testssl first as the primary assessment and sslscan next as a
+cross-check when installed. If only one is installed, Bident uses that tool.
+The SSL/TLS NSE group runs only when neither external tool is available; an
+external tool error does not trigger an automatic NSE retry. The target ports
+remain 443, 465, 587, 636, 993, 995, 3269, 3389, and 8443.
+
 All Nmap scan commands that can execute NSE scripts receive `--script-timeout`,
 including version-detection scripts. Brute-force checks remain enabled as before.
 For a longer run, use `sudo ./bident.sh -f scope.txt --script-timeout 1h`.
@@ -173,8 +179,8 @@ target is retained even if another target fails in the same module output.
 
 The Weak SSH Ciphers finding groups affected IP:port endpoints with their cipher
 names. Only encryption (`enc`) warnings/failures qualify; key-exchange, host-key,
-or MAC warnings alone do not. The terminal also prints affected endpoints and
-saves them to `tool_results/ssh_weak_cipher_targets.txt`.
+or MAC warnings alone do not. Affected endpoints appear in the report rather
+than the terminal and are saved to `tool_results/ssh_weak_cipher_targets.txt`.
 
 Other Findings Summary cards also show deduplicated affected IP:port lists.
 Endpoints must be tied to a positive result line or a successful single-target
@@ -190,6 +196,28 @@ and entry rows, or **Copy IP:Port only** for unique known endpoints. Entries wit
 an attributable endpoint display **Not identified** and are excluded from the
 endpoint-only copy. Copy buttons include the entries displayed in the report
 (up to 80), rather than hidden or truncated results.
+
+TLS Findings Summary cards cover SSLv2/SSLv3/TLS 1.0/TLS 1.1 support, explicit
+TLS 1.3 unavailability, accepted weak ciphers, HTTP compression, wildcard served
+certificates, weak certificate signature hashes, and expired served certificates.
+Each card includes affected IP:port endpoints, a copy button, and source evidence
+with line numbers from testssl, sslscan, or the NSE fallback. Missing tests and
+connection failures are excluded. TLS 1.3 unavailability also requires evidence
+of a working TLS service, and is suppressed when another saved result explicitly
+shows TLS 1.3 support on the same endpoint. Certificate expiry dates must be
+before today in UTC; certificates expiring today are excluded. HTTP compression indicates potential BREACH
+exposure, and wildcard use alone is an informational review item; neither is
+presented as independently verified exploitability.
+
+TLS 1.3 negative results are also suppressed for scanner capability warnings and
+inconclusive or timed-out tests. Accepted TLS 1.3 cipher handshakes count as
+contradictory support evidence. Expiry dates must be complete and valid UTC dates
+(including month lengths and leap years), with an expiry date before today (UTC);
+soon-to-expire certificates, chain-only certificates, unknown dates, and
+conflicting unexpired dates for the same served certificate are excluded.
+An `expired` label without a usable expiry date is insufficient. Wildcard
+certificate entries require a literal `*` in the common name or alternative
+names; an asterisk in an organization name or issuer alone does not qualify.
 
 ```text
 base_scans/              SYN, connect, and UDP Nmap base scan outputs.

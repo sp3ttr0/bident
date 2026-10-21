@@ -382,15 +382,12 @@ main() {
   run_dns_dig_checks
   
   run_if_open "HTTP/HTTPS NSE" tcp "80,81,443,8000,8080,8443" \
-    nmap -d -n -sV "-${TIMING}" --script-timeout "$SCRIPT_TIMEOUT" --min-rate "$NSE_MIN_RATE" --script '(http* or ssl*) and not (dos or http-slowloris*)' -p 80,81,443,8000,8080,8443 -oN ${NSE_DIR}/s_http.txt -iL "$(open_targets_file_for_ports tcp 80,81,443,8000,8080,8443 http_https)" --open
+    nmap -d -n -sV "-${TIMING}" --script-timeout "$SCRIPT_TIMEOUT" --min-rate "$NSE_MIN_RATE" --script 'http* and not (dos or http-slowloris*)' -p 80,81,443,8000,8080,8443 -oN ${NSE_DIR}/s_http.txt -iL "$(open_targets_file_for_ports tcp 80,81,443,8000,8080,8443 http_https)" --open
   
   run_if_open "AJP NSE" tcp "8009" \
     nmap -d -n -sV "-${TIMING}" --script-timeout "$SCRIPT_TIMEOUT" --min-rate "$NSE_MIN_RATE" --script 'ajp-* and not dos' -p 8009 -oN ${NSE_DIR}/s_ajp.txt -iL "$(open_targets_file_for_ports tcp 8009 ajp)" --open
   
-  run_if_open "SSL/TLS NSE" tcp "443,465,587,636,993,995,3269,3389,8443" \
-    nmap -d -n -sV "-${TIMING}" --script-timeout "$SCRIPT_TIMEOUT" --min-rate "$NSE_MIN_RATE" --script 'ssl-* and not dos' -p 443,465,587,636,993,995,3269,3389,8443 -oN ${NSE_DIR}/ssl_tls_results.txt -iL "$(open_targets_file_for_ports tcp 443,465,587,636,993,995,3269,3389,8443 ssl_tls)" --open
-  
-  run_ssl_external_checks
+  run_ssl_checks
   
   run_if_open "Kerberos NSE" tcp "88" \
     nmap -d -n -sV "-${TIMING}" --script-timeout "$SCRIPT_TIMEOUT" --min-rate "$NSE_MIN_RATE" --script krb5-enum-users -p 88 -oN ${NSE_DIR}/s_kerberos.txt -iL "$(open_targets_file_for_ports tcp 88 kerberos)" --open

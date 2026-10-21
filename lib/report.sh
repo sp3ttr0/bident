@@ -448,14 +448,14 @@ verified_ip_port_lines() {
       }
       n = split(ip, parts, ".")
       if (n != 4) return 0
-      for (j = 1; j <= n; j++) if (parts[j] !~ /^[0-9]+$/ || parts[j] > 255) return 0
+      for (j = 1; j <= n; j++) if (parts[j] !~ /^[0-9]+$/ || (parts[j] + 0) > 255) return 0
       return 1
     }
     {
       endpoint = $0; ip = endpoint; port = endpoint
       if (endpoint ~ /^\[/) { sub(/^\[/, "", ip); sub(/\]:[0-9]+$/, "", ip); sub(/^.*\]:/, "", port) }
       else { sub(/:[0-9]+$/, "", ip); sub(/^.*:/, "", port); if (ip ~ /:/) next }
-      if (port ~ /^[0-9]+$/ && port > 0 && port <= 65535 && valid_ip(ip) && !seen[endpoint]++) print endpoint
+      if (port ~ /^[0-9]+$/ && (port + 0) > 0 && (port + 0) <= 65535 && valid_ip(ip) && !seen[endpoint]++) print endpoint
     }
   '
 }
@@ -469,11 +469,11 @@ tool_finding_endpoints() {
       if (ip ~ /:/) return ip ~ /^[0-9a-fA-F:]+$/ && ip ~ /:.*:/
       n = split(ip, parts, ".")
       if (n != 4) return 0
-      for (j = 1; j <= n; j++) if (parts[j] !~ /^[0-9]+$/ || parts[j] > 255) return 0
+      for (j = 1; j <= n; j++) if (parts[j] !~ /^[0-9]+$/ || (parts[j] + 0) > 255) return 0
       return 1
     }
     function emit(ip, port, key) {
-      if (!valid_ip(ip) || port !~ /^[0-9]+$/ || port < 1 || port > 65535) return
+      if (!valid_ip(ip) || port !~ /^[0-9]+$/ || (port + 0) < 1 || (port + 0) > 65535) return
       key = (ip ~ /:/ ? "[" ip "]" : ip) ":" port
       if (!seen[key]++) print key
     }
@@ -589,14 +589,14 @@ msf_finding_lines() {
       } else if (ip ~ /^[0-9.]+:[0-9]+$/) {
         port = ip; sub(/^.*:/, "", port); sub(/:[0-9]+$/, "", ip)
       }
-      if (port !~ /^[0-9]+$/ || port < 1 || port > 65535) return ""
+      if (port !~ /^[0-9]+$/ || (port + 0) < 1 || (port + 0) > 65535) return ""
       if (ip ~ /:/) {
         if (ip !~ /^[0-9a-fA-F:]+$/ || ip !~ /:.*:/) return ""
         return "[" ip "]:" port
       }
       n = split(ip, parts, ".")
       if (n != 4) return ""
-      for (j = 1; j <= 4; j++) if (parts[j] !~ /^[0-9]+$/ || parts[j] > 255) return ""
+      for (j = 1; j <= 4; j++) if (parts[j] !~ /^[0-9]+$/ || (parts[j] + 0) > 255) return ""
       return ip ":" port
     }
 
@@ -835,12 +835,73 @@ credential_candidate_count() {
   printf '%s' "$total_count"
 }
 
+append_tls_findings_summary() {
+  local outfile="$1" rows_file file kind id title detail endpoints endpoint source_line evidence known source_name
+  local now_utc
+  now_utc="$(date -u '+%Y%m%d%H%M%S')"
+  rows_file="$(mktemp "${TMPDIR:-/tmp}/bident_tls_findings.XXXXXX")"
+  for kind in testssl sslscan nse; do
+    case "$kind" in
+      testssl) file="${TOOL_DIR}/testssl_results.txt" ;;
+      sslscan) file="${TOOL_DIR}/sslscan_results.txt" ;;
+      nse) file="${NSE_DIR}/ssl_tls_results.txt" ;;
+    esac
+    [[ -s "$file" ]] || continue
+    awk -v kind="$kind" -v now_utc="$now_utc" -f "${BIDENT_ROOT}/lib/tls_findings.awk" "$file" \
+      | awk -F '\034' -v source_file="$file" 'BEGIN {OFS="\034"} {print $1,$2,source_file ":" $3,$4}' >> "$rows_file"
+  done
+  for id in 1 2 3 4 5 6 7 8 9 10; do
+    case "$id" in
+      1) title='SSLv2 Enabled' ;;
+      2) title='SSLv3 Enabled' ;;
+      3) title='TLSv1.0 Enabled' ;;
+      4) title='TLSv1.1 Enabled' ;;
+      5) title='TLSv1.3 Disabled' ;;
+      6) title='Weak SSL/TLS Ciphers' ;;
+      7) title='HTTP Compression Enabled (BREACH Vulnerability)' ;;
+      8) title='Wildcard SSL Certificates in Use' ;;
+      9) title='SSL Certificate Using Weak Hashing Algorithm' ;;
+      10) title='Expired SSL Certificate' ;;
+    esac
+    endpoints="$(awk -F '\034' -v wanted="$id" '
+      $1 == 11 {supported[$2] = 1}
+      $1 == wanted {candidate[$2] = 1}
+      END {for (endpoint in candidate) if (wanted != 5 || !supported[endpoint]) print endpoint}
+    ' "$rows_file" | verified_ip_port_lines | sort -u)"
+    [[ -n "$endpoints" ]] || continue
+    detail='Explicit tool results tied to the listed endpoints. Review the evidence before remediation.'
+    case "$id" in
+      5) detail='The tool explicitly reports TLS 1.3 unavailable on a working TLS service. Inconclusive tests, client capability warnings, and contradictory TLS 1.3 successes are excluded.' ;;
+      6) detail='Accepted weak cipher suites or an explicitly offered weak cipher category; rejected suites are excluded.' ;;
+      7) detail='HTTP compression was observed on the tested response. This is potential BREACH exposure; exploitability depends on application secrets and attacker-controlled input.' ;;
+      8) detail='A wildcard name was observed in the served certificate. Wildcard use alone does not establish a vulnerability.' ;;
+      9) detail='The served certificate signature uses SHA-1, MD5, or MD2. Cipher-suite MACs and certificate fingerprints are excluded.' ;;
+      10) detail='The served certificate expiry date is before today (UTC). Certificates expiring today, unknown dates, chain-only dates, and contradictory unexpired dates for the same certificate are excluded.' ;;
+    esac
+    {
+      printf '    <li><details class="finding-panel">\n'
+      printf '      <summary><span class="finding-severity">Review</span><div><strong>%s</strong><span>%s affected target(s)</span></div></summary>\n' "$(html_escape_text "$title")" "$(printf '%s\n' "$endpoints" | awk 'END {print NR}')"
+      printf '      <p class="muted">%s</p>\n' "$(html_escape_text "$detail")"
+      append_affected_endpoint_list "$endpoints"
+      printf '      <pre class="finding-evidence">'
+      while IFS=$'\034' read -r known endpoint source_line evidence; do
+        [[ "$known" == "$id" ]] || continue
+        printf '%s\n' "$endpoints" | grep -Fxq -- "$endpoint" || continue
+        printf '%s — %s\n' "$(html_escape_text "$source_line")" "$(html_escape_text "$evidence")"
+      done < "$rows_file"
+      printf '</pre>\n    </details></li>\n'
+    } >> "$outfile"
+  done
+  rm -f "$rows_file"
+}
+
 append_findings_summary_section() {
   local outfile="$1"
   local temp_file
 
   temp_file="$(mktemp "${TMPDIR:-/tmp}/bident_findings.XXXXXX")"
   append_ssh_weak_cipher_finding "$temp_file"
+  append_tls_findings_summary "$temp_file"
   append_finding_item "$temp_file" "Review" "Exposed RPC Services" "${TOOL_DIR}/s_rpcdump_135.txt"
   append_finding_item "$temp_file" "Review" "Unauthenticated Remote Procedure Call" "${TOOL_DIR}/s_rpcclient_135.txt"
   append_finding_item "$temp_file" "Review" "Misconfigured Server Message Block Signing" "${TOOL_DIR}/nxc_smb_signing_false.txt" "Possible Server Message Block (SMB) relay attack exposure."
