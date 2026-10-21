@@ -94,6 +94,8 @@ Run Bident with sudo/root for scans. Privileged scans run as root, and when laun
 --no-udp          Skip UDP scans and UDP follow-up checks.
 --responder       Start Responder on eth0 in a separate screen session.
 --tool-timeout N  Timeout for external tools, in seconds. Default: disabled.
+--script-timeout T Timeout per NSE script instance. Default: 15m; 0 = unlimited.
+                   Accepts seconds or ms/s/m/h suffixes (e.g. 900, 15m, 1h).
 -T1..-T5          Set the Nmap timing template. Default: -T4.
 ```
 
@@ -152,6 +154,16 @@ sudo ./bident.sh --resume bident_results_20260928_120000
 ```
 
 ## Output Layout
+
+All Nmap scan commands that can execute NSE scripts receive `--script-timeout`,
+including version-detection scripts. Brute-force checks remain enabled as before.
+For a longer run, use `sudo ./bident.sh -f scope.txt --script-timeout 1h`.
+The limit applies to each script instance, not the whole scan. Follow-up check
+statuses and execution logs are shown in the report; detected script timeouts
+and failed commands are marked incomplete and remaining checks continue.
+Nmap may discard the timed-out script instance’s output; results already written
+by other checks and captured execution logs remain available. No credential
+result from an incomplete check must be interpreted as a confirmed absence.
 
 ```text
 base_scans/              SYN, connect, and UDP Nmap base scan outputs.

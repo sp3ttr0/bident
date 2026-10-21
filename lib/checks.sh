@@ -1,3 +1,32 @@
+run_nse_check() {
+  local label="$1"
+  shift
+  local slug log_file status rc=0
+  local pipeline_status=()
+  slug="$(printf '%s' "$label" | tr -c '[:alnum:]_-' '_')"
+  mkdir -p "$LOG_DIR"
+  log_file="${LOG_DIR}/nse_${slug}.log"
+  if "$@" 2>&1 | tee "$log_file"; then
+    rc=0
+  else
+    pipeline_status=("${PIPESTATUS[@]}")
+    rc="${pipeline_status[0]}"
+    if [[ "$rc" -eq 0 ]]; then rc="${pipeline_status[1]}"; fi
+  fi
+  if [[ "$rc" -ne 0 ]]; then
+    status="Incomplete: command failed (exit ${rc})"
+  elif grep -Eiq 'NSE:.*(timed out|timeout)|Script.*timed out' "$log_file"; then
+    status="Incomplete: script timeout"
+  else
+    status="Finished; review output"
+  fi
+  printf '%s\t%s\t%s\n' "$label" "$status" "$log_file" >> "${LOG_DIR}/nse_status.tsv"
+  if [[ "$status" == Incomplete:* ]]; then
+    printf '%s%s: %s. Continuing remaining checks.%s\n' "$CLR_YELLOW" "$label" "$status" "$CLR_RESET"
+  fi
+  return 0
+}
+
 run_if_open() {
   local label="$1"
   local proto="$2"
@@ -13,7 +42,7 @@ run_if_open() {
   printf '%sChecking %s (%s)%s\n' "$CLR_CYAN" "$check_label" "$ports_csv" "$CLR_RESET"
   if has_open_port "$proto" "${ports[@]}"; then
     printf '%sRunning %s:%s Detected Open %s Port(s): (%s)\n' "$CLR_CYAN" "$label" "$CLR_RESET" "$proto" "$ports_csv"
-    "$@"
+    run_nse_check "$label" "$@"
   else
     printf '%sNo %s (%s) Found%s\n' "$CLR_YELLOW" "$check_label" "$ports_csv" "$CLR_RESET"
   fi

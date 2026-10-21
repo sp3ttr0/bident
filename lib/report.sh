@@ -291,6 +291,24 @@ append_base_scan_port_evidence() {
   return 1
 }
 
+append_nse_status_section() {
+  local outfile="$1" label status log_file
+  {
+    printf '  <h2>NSE Check Status</h2>\n'
+    printf '  <p class="muted">Script timeout: %s per instance (0 = unlimited). Timed-out checks are incomplete, not evidence that credentials or vulnerabilities are absent.</p>\n' "$(html_escape_text "$SCRIPT_TIMEOUT")"
+    if [[ -s "${LOG_DIR}/nse_status.tsv" ]]; then
+      printf '  <ul>\n'
+      while IFS=$'\t' read -r label status log_file; do
+        printf '    <li><strong>%s</strong>: %s — <a href="%s">execution log</a></li>\n' \
+          "$(html_escape_text "$label")" "$(html_escape_text "$status")" "$(html_escape_text "$log_file")"
+      done < "${LOG_DIR}/nse_status.tsv"
+      printf '  </ul>\n'
+    else
+      printf '  <p class="muted">No follow-up NSE checks recorded for this run.</p>\n'
+    fi
+  } >> "$outfile"
+}
+
 append_scan_configuration_section() {
   local outfile="$1"
   local scope_display="${SCOPE_FILE:-resume}"
@@ -1632,6 +1650,7 @@ HTML
     printf '  </div>\n' >> "$report_file"
   fi
 
+  append_nse_status_section "$report_file"
   append_findings_summary_section "$report_file"
   append_credential_summary_section "$report_file"
 

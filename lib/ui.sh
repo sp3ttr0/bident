@@ -1,6 +1,6 @@
 usage() {
   printf '%s\n' \
-    'Usage: sudo ./bident.sh (-f <scope-file> | -t <target> | --resume <results-dir>) [-o <results-dir>] [-p-] [--no-udp] [--no-msf] [--tool-timeout N] [--msf-timeout N] [--msf-threads N] [--responder] [-T1|-T2|-T3|-T4|-T5]' \
+    'Usage: sudo ./bident.sh (-f <scope-file> | -t <target> | --resume <results-dir>) [-o <results-dir>] [-p-] [--no-udp] [--no-msf] [--script-timeout T] [--tool-timeout N] [--msf-timeout N] [--msf-threads N] [--responder] [-T1|-T2|-T3|-T4|-T5]' \
     '       ./bident.sh --check-deps' \
     '       sudo ./bident.sh --install-deps' \
     '' \
@@ -24,6 +24,7 @@ usage() {
     '  --msf-threads N   THREADS value for Metasploit scanner modules. Default: 16.' \
     '  --no-udp          Skip UDP scans and UDP follow-up checks.' \
     '  --responder       Start Responder on eth0 in a separate screen session.' \
+    '  --script-timeout T NSE limit per instance: 15m default; 0 unlimited.' \
     '  --tool-timeout N  Timeout for external tools, in seconds. Default: disabled.' \
     '  -T1..-T5          Set the Nmap timing template. Default: -T4.' \
     '' \

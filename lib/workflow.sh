@@ -34,6 +34,11 @@ main() {
         NO_MSF=true
         shift
         ;;
+      --script-timeout)
+        [[ -n "${2:-}" ]] || die "--script-timeout requires a duration"
+        SCRIPT_TIMEOUT="$2"
+        shift 2
+        ;;
       --tool-timeout)
         [[ -n "${2:-}" ]] || die "--tool-timeout requires seconds"
         case "$2" in
@@ -143,6 +148,8 @@ main() {
       ;;
   esac
 
+  [[ "$SCRIPT_TIMEOUT" =~ ^[0-9]+([.][0-9]+)?(ms|s|m|h)?$ ]] || die "Invalid script timeout: $SCRIPT_TIMEOUT. Use 900, 15m, 1h, or 0"
+
   DISCOVERY_HOST_TIMEOUT_ARGS=(--host-timeout "$DISCOVERY_HOST_TIMEOUT")
 
   require_root_scan_run
@@ -150,6 +157,7 @@ main() {
   print_banner
   print_section 'Scan Configuration'
   printf '%sTiming Template:%s -%s\n' "$CLR_CYAN" "$CLR_RESET" "$TIMING"
+  printf '%sNSE Script Timeout:%s %s (per script instance; 0 = unlimited)\n' "$CLR_CYAN" "$CLR_RESET" "$SCRIPT_TIMEOUT"
   printf '%sHost Discovery Timeout:%s %s\n' "$CLR_CYAN" "$CLR_RESET" "${DISCOVERY_HOST_TIMEOUT_ARGS[1]}"
   if [[ "$TOOL_TIMEOUT" -gt 0 ]]; then
     if command_available timeout; then
@@ -173,6 +181,7 @@ main() {
   need_command rm
   need_command screen
   need_command sort
+  need_command tee
   if [[ "$RUN_RESPONDER" == true ]]; then
     need_command responder
   fi
@@ -218,6 +227,7 @@ main() {
   mkdir -p "$SCAN_DIR" "$NSE_DIR" "$TOOL_DIR" "$LOG_DIR"
   allow_unprivileged_output_writes
   start_scan_timing
+  : > "${LOG_DIR}/nse_status.tsv"
   
   if [[ "$RUN_RESPONDER" == true ]]; then
     ensure_screen_sessions_available responder
@@ -318,15 +328,15 @@ main() {
       case "$session_name" in
         syn)
           start_screen_scan "syn" \
-            "${PRIVILEGED_CMD_PREFIX} nmap -sV -sS -v --reason ${PORT_FLAG} --min-rate ${MIN_RATE} -${TIMING} -oA ${SCAN_DIR}/syn -iL ${LIVE_TARGETS_FILE} --open"
+            "${PRIVILEGED_CMD_PREFIX} nmap -sV -sS -v --reason ${PORT_FLAG} --min-rate ${MIN_RATE} -${TIMING} --script-timeout ${SCRIPT_TIMEOUT} -oA ${SCAN_DIR}/syn -iL ${LIVE_TARGETS_FILE} --open"
           ;;
         con)
           start_screen_scan "con" \
-            "nmap -sV -sT -v --reason ${PORT_FLAG} --min-rate ${MIN_RATE} -${TIMING} -oA ${SCAN_DIR}/con -iL ${LIVE_TARGETS_FILE} --open"
+            "nmap -sV -sT -v --reason ${PORT_FLAG} --min-rate ${MIN_RATE} -${TIMING} --script-timeout ${SCRIPT_TIMEOUT} -oA ${SCAN_DIR}/con -iL ${LIVE_TARGETS_FILE} --open"
           ;;
         udp)
           start_screen_scan "udp" \
-            "${PRIVILEGED_CMD_PREFIX} nmap -n -sUV --version-intensity 1 -v --reason --max-rtt-timeout=100ms --max-retries=0 --min-rate ${MIN_RATE} -${TIMING} ${PORT_FLAG} -oA ${SCAN_DIR}/udp -iL ${LIVE_TARGETS_FILE} --open"
+            "${PRIVILEGED_CMD_PREFIX} nmap -n -sUV --version-intensity 1 -v --reason --max-rtt-timeout=100ms --max-retries=0 --min-rate ${MIN_RATE} -${TIMING} --script-timeout ${SCRIPT_TIMEOUT} ${PORT_FLAG} -oA ${SCAN_DIR}/udp -iL ${LIVE_TARGETS_FILE} --open"
           ;;
       esac
     done
@@ -348,113 +358,113 @@ main() {
   print_section 'Vulnerability Checks'
   
   run_if_open "FTP NSE" tcp "21" \
-    nmap -d -n -sV "-${TIMING}" --min-rate "$NSE_MIN_RATE" --script 'ftp-* and not dos' -p 21 -oN ${NSE_DIR}/s_ftp.txt -iL "$(open_targets_file_for_ports tcp 21 ftp)" --open
+    nmap -d -n -sV "-${TIMING}" --script-timeout "$SCRIPT_TIMEOUT" --min-rate "$NSE_MIN_RATE" --script 'ftp-* and not dos' -p 21 -oN ${NSE_DIR}/s_ftp.txt -iL "$(open_targets_file_for_ports tcp 21 ftp)" --open
   
   run_if_open "SSH NSE" tcp "22" \
-    nmap -d -n -sV "-${TIMING}" --min-rate "$NSE_MIN_RATE" --script 'ssh* and not dos' -p 22 -oN ${NSE_DIR}/s_ssh.txt -iL "$(open_targets_file_for_ports tcp 22 ssh)" --open
+    nmap -d -n -sV "-${TIMING}" --script-timeout "$SCRIPT_TIMEOUT" --min-rate "$NSE_MIN_RATE" --script 'ssh* and not dos' -p 22 -oN ${NSE_DIR}/s_ssh.txt -iL "$(open_targets_file_for_ports tcp 22 ssh)" --open
   
   run_ssh_audit_check
   
   run_if_open "Telnet NSE" tcp "23" \
-    nmap -d -n -sV "-${TIMING}" --min-rate "$NSE_MIN_RATE" --script '*telnet* and not dos' -p 23 -oN ${NSE_DIR}/s_telnet.txt -iL "$(open_targets_file_for_ports tcp 23 telnet)" --open
+    nmap -d -n -sV "-${TIMING}" --script-timeout "$SCRIPT_TIMEOUT" --min-rate "$NSE_MIN_RATE" --script '*telnet* and not dos' -p 23 -oN ${NSE_DIR}/s_telnet.txt -iL "$(open_targets_file_for_ports tcp 23 telnet)" --open
   
   run_if_open "SMTP NSE" tcp "25,465,587" \
-    nmap -d -n -sV "-${TIMING}" --min-rate "$NSE_MIN_RATE" --script 'smtp-* and not dos' -p 25,465,587 -oN ${NSE_DIR}/s_smtp.txt -iL "$(open_targets_file_for_ports tcp 25,465,587 smtp)" --open
+    nmap -d -n -sV "-${TIMING}" --script-timeout "$SCRIPT_TIMEOUT" --min-rate "$NSE_MIN_RATE" --script 'smtp-* and not dos' -p 25,465,587 -oN ${NSE_DIR}/s_smtp.txt -iL "$(open_targets_file_for_ports tcp 25,465,587 smtp)" --open
   
   if [[ "$NO_UDP" == true ]]; then
     run_if_open "DNS NSE" tcp "53" \
-      run_privileged nmap -d -n -sS -sV "-${TIMING}" --min-rate "$NSE_MIN_RATE" --script '((default and *dns*) or fcrdns or dns-srv-enum or dns-random-txid or dns-random-srcport) and not dos' -p 53 -oN ${NSE_DIR}/s_dns.txt -iL "$(open_targets_file_for_ports tcp 53 dns)" --open
+      run_privileged nmap -d -n -sS -sV "-${TIMING}" --script-timeout "$SCRIPT_TIMEOUT" --min-rate "$NSE_MIN_RATE" --script '((default and *dns*) or fcrdns or dns-srv-enum or dns-random-txid or dns-random-srcport) and not dos' -p 53 -oN ${NSE_DIR}/s_dns.txt -iL "$(open_targets_file_for_ports tcp 53 dns)" --open
   else
     run_if_open "DNS NSE" any "53" \
-      run_privileged nmap -d -n -sS -sU -sV "-${TIMING}" --min-rate "$NSE_MIN_RATE" --script '((default and *dns*) or fcrdns or dns-srv-enum or dns-random-txid or dns-random-srcport) and not dos' -p 53 -oN ${NSE_DIR}/s_dns.txt -iL "$(open_targets_file_for_ports any 53 dns)" --open
+      run_privileged nmap -d -n -sS -sU -sV "-${TIMING}" --script-timeout "$SCRIPT_TIMEOUT" --min-rate "$NSE_MIN_RATE" --script '((default and *dns*) or fcrdns or dns-srv-enum or dns-random-txid or dns-random-srcport) and not dos' -p 53 -oN ${NSE_DIR}/s_dns.txt -iL "$(open_targets_file_for_ports any 53 dns)" --open
   fi
   
   run_dns_dig_checks
   
   run_if_open "HTTP/HTTPS NSE" tcp "80,81,443,8000,8080,8443" \
-    nmap -d -n -sV "-${TIMING}" --min-rate "$NSE_MIN_RATE" --script '(http* or ssl*) and not (dos or http-slowloris*)' -p 80,81,443,8000,8080,8443 -oN ${NSE_DIR}/s_http.txt -iL "$(open_targets_file_for_ports tcp 80,81,443,8000,8080,8443 http_https)" --open
+    nmap -d -n -sV "-${TIMING}" --script-timeout "$SCRIPT_TIMEOUT" --min-rate "$NSE_MIN_RATE" --script '(http* or ssl*) and not (dos or http-slowloris*)' -p 80,81,443,8000,8080,8443 -oN ${NSE_DIR}/s_http.txt -iL "$(open_targets_file_for_ports tcp 80,81,443,8000,8080,8443 http_https)" --open
   
   run_if_open "AJP NSE" tcp "8009" \
-    nmap -d -n -sV "-${TIMING}" --min-rate "$NSE_MIN_RATE" --script 'ajp-* and not dos' -p 8009 -oN ${NSE_DIR}/s_ajp.txt -iL "$(open_targets_file_for_ports tcp 8009 ajp)" --open
+    nmap -d -n -sV "-${TIMING}" --script-timeout "$SCRIPT_TIMEOUT" --min-rate "$NSE_MIN_RATE" --script 'ajp-* and not dos' -p 8009 -oN ${NSE_DIR}/s_ajp.txt -iL "$(open_targets_file_for_ports tcp 8009 ajp)" --open
   
   run_if_open "SSL/TLS NSE" tcp "443,465,587,636,993,995,3269,3389,8443" \
-    nmap -d -n -sV "-${TIMING}" --min-rate "$NSE_MIN_RATE" --script 'ssl-* and not dos' -p 443,465,587,636,993,995,3269,3389,8443 -oN ${NSE_DIR}/ssl_tls_results.txt -iL "$(open_targets_file_for_ports tcp 443,465,587,636,993,995,3269,3389,8443 ssl_tls)" --open
+    nmap -d -n -sV "-${TIMING}" --script-timeout "$SCRIPT_TIMEOUT" --min-rate "$NSE_MIN_RATE" --script 'ssl-* and not dos' -p 443,465,587,636,993,995,3269,3389,8443 -oN ${NSE_DIR}/ssl_tls_results.txt -iL "$(open_targets_file_for_ports tcp 443,465,587,636,993,995,3269,3389,8443 ssl_tls)" --open
   
   run_ssl_external_checks
   
   run_if_open "Kerberos NSE" tcp "88" \
-    nmap -d -n -sV "-${TIMING}" --min-rate "$NSE_MIN_RATE" --script krb5-enum-users -p 88 -oN ${NSE_DIR}/s_kerberos.txt -iL "$(open_targets_file_for_ports tcp 88 kerberos)" --open
+    nmap -d -n -sV "-${TIMING}" --script-timeout "$SCRIPT_TIMEOUT" --min-rate "$NSE_MIN_RATE" --script krb5-enum-users -p 88 -oN ${NSE_DIR}/s_kerberos.txt -iL "$(open_targets_file_for_ports tcp 88 kerberos)" --open
   
   run_if_open "POP3 NSE" tcp "110,995" \
-    nmap -d -n -sV "-${TIMING}" --min-rate "$NSE_MIN_RATE" --script 'pop3-capabilities or pop3-ntlm-info' -p 110,995 -oN ${NSE_DIR}/s_pop3.txt -iL "$(open_targets_file_for_ports tcp 110,995 pop3)" --open
+    nmap -d -n -sV "-${TIMING}" --script-timeout "$SCRIPT_TIMEOUT" --min-rate "$NSE_MIN_RATE" --script 'pop3-capabilities or pop3-ntlm-info' -p 110,995 -oN ${NSE_DIR}/s_pop3.txt -iL "$(open_targets_file_for_ports tcp 110,995 pop3)" --open
   
   if [[ "$NO_UDP" == true ]]; then
     run_if_open "RPCBind NSE" tcp "111" \
-      run_privileged nmap -d -n -sV -sS "-${TIMING}" --min-rate "$NSE_MIN_RATE" -p 111 -oN ${NSE_DIR}/s_rpcbind.txt -iL "$(open_targets_file_for_ports tcp 111 rpcbind)" --open
+      run_privileged nmap -d -n -sV -sS "-${TIMING}" --script-timeout "$SCRIPT_TIMEOUT" --min-rate "$NSE_MIN_RATE" -p 111 -oN ${NSE_DIR}/s_rpcbind.txt -iL "$(open_targets_file_for_ports tcp 111 rpcbind)" --open
   else
     run_if_open "RPCBind NSE" any "111" \
-      run_privileged nmap -d -n -sV -sSUC "-${TIMING}" --min-rate "$NSE_MIN_RATE" -p 111 -oN ${NSE_DIR}/s_rpcbind.txt -iL "$(open_targets_file_for_ports any 111 rpcbind)" --open
+      run_privileged nmap -d -n -sV -sSUC "-${TIMING}" --script-timeout "$SCRIPT_TIMEOUT" --min-rate "$NSE_MIN_RATE" -p 111 -oN ${NSE_DIR}/s_rpcbind.txt -iL "$(open_targets_file_for_ports any 111 rpcbind)" --open
   fi
   
   if [[ "$NO_UDP" != true ]]; then
     run_if_open "NTP NSE" udp "123" \
-      run_privileged nmap -d -n -sU -sV "-${TIMING}" --min-rate "$NSE_MIN_RATE" --script 'ntp* and (discovery or vuln) and not (dos or brute)' -p 123 -oN ${NSE_DIR}/s_ntp.txt -iL "$(open_targets_file_for_ports udp 123 ntp)" --open
+      run_privileged nmap -d -n -sU -sV "-${TIMING}" --script-timeout "$SCRIPT_TIMEOUT" --min-rate "$NSE_MIN_RATE" --script 'ntp* and (discovery or vuln) and not (dos or brute)' -p 123 -oN ${NSE_DIR}/s_ntp.txt -iL "$(open_targets_file_for_ports udp 123 ntp)" --open
   fi
   
   run_rpc_135_checks
   
   if [[ "$NO_UDP" != true ]]; then
     run_if_open "NetBIOS NSE" udp "137" \
-      run_privileged nmap -d -n -sU -sV "-${TIMING}" --min-rate "$NSE_MIN_RATE" --script nbstat -p 137 -oN ${NSE_DIR}/s_netbios.txt -iL "$(open_targets_file_for_ports udp 137 netbios)" --open
+      run_privileged nmap -d -n -sU -sV "-${TIMING}" --script-timeout "$SCRIPT_TIMEOUT" --min-rate "$NSE_MIN_RATE" --script nbstat -p 137 -oN ${NSE_DIR}/s_netbios.txt -iL "$(open_targets_file_for_ports udp 137 netbios)" --open
   fi
   
   run_if_open "SMB NSE" tcp "139,445" \
-    nmap -d -n -sV "-${TIMING}" --min-rate "$NSE_MIN_RATE" --script '((smb-vuln* and not dos) or smb-enum* or smb-protocols or smb-security-mode or smb2-security-mode)' -p 139,445 -oN ${NSE_DIR}/s_smb.txt -iL "$(open_targets_file_for_ports tcp 139,445 smb)" --open
+    nmap -d -n -sV "-${TIMING}" --script-timeout "$SCRIPT_TIMEOUT" --min-rate "$NSE_MIN_RATE" --script '((smb-vuln* and not dos) or smb-enum* or smb-protocols or smb-security-mode or smb2-security-mode)' -p 139,445 -oN ${NSE_DIR}/s_smb.txt -iL "$(open_targets_file_for_ports tcp 139,445 smb)" --open
   
   run_smb_external_checks
   
   if [[ "$NO_UDP" != true ]]; then
     run_if_open "SNMP NSE" udp "161,162" \
-      run_privileged nmap -d -n -sUV "-${TIMING}" --min-rate "$NSE_MIN_RATE" --script 'snmp-* and not dos' -p 161,162 -oN ${NSE_DIR}/s_snmp.txt -iL "$(open_targets_file_for_ports udp 161,162 snmp)" --open
+      run_privileged nmap -d -n -sUV "-${TIMING}" --script-timeout "$SCRIPT_TIMEOUT" --min-rate "$NSE_MIN_RATE" --script 'snmp-* and not dos' -p 161,162 -oN ${NSE_DIR}/s_snmp.txt -iL "$(open_targets_file_for_ports udp 161,162 snmp)" --open
   fi
   
   run_if_open "LDAP NSE" tcp "389,636,3268,3269" \
-    nmap -d -n -sV "-${TIMING}" --min-rate "$NSE_MIN_RATE" --script 'ldap* and not (brute or dos)' -p 389,636,3268,3269 -oN ${NSE_DIR}/s_ldap.txt -iL "$(open_targets_file_for_ports tcp 389,636,3268,3269 ldap)" --open
+    nmap -d -n -sV "-${TIMING}" --script-timeout "$SCRIPT_TIMEOUT" --min-rate "$NSE_MIN_RATE" --script 'ldap* and not (brute or dos)' -p 389,636,3268,3269 -oN ${NSE_DIR}/s_ldap.txt -iL "$(open_targets_file_for_ports tcp 389,636,3268,3269 ldap)" --open
   
   run_ldapsearch_checks
   
   if [[ "$NO_UDP" != true ]]; then
     run_if_open "IKE scan" udp "500" \
-      run_privileged nmap -d -n -sUV "-${TIMING}" --min-rate "$NSE_MIN_RATE" -p 500 -oN ${NSE_DIR}/s_ike.txt -iL "$(open_targets_file_for_ports udp 500 ike)" --open
+      run_privileged nmap -d -n -sUV "-${TIMING}" --script-timeout "$SCRIPT_TIMEOUT" --min-rate "$NSE_MIN_RATE" -p 500 -oN ${NSE_DIR}/s_ike.txt -iL "$(open_targets_file_for_ports udp 500 ike)" --open
   
     run_ike_weak_encryption_check
   
     run_if_open "IPMI NSE" udp "623" \
-      run_privileged nmap -d -n -sU -sV "-${TIMING}" --min-rate "$NSE_MIN_RATE" --script 'ipmi-* and not dos' -p 623 -oN ${NSE_DIR}/s_ipmi.txt -iL "$(open_targets_file_for_ports udp 623 ipmi)" --open
+      run_privileged nmap -d -n -sU -sV "-${TIMING}" --script-timeout "$SCRIPT_TIMEOUT" --min-rate "$NSE_MIN_RATE" --script 'ipmi-* and not dos' -p 623 -oN ${NSE_DIR}/s_ipmi.txt -iL "$(open_targets_file_for_ports udp 623 ipmi)" --open
   fi
   
   run_if_open "MSSQL NSE" tcp "1433" \
-    nmap -d -n -sV "-${TIMING}" --min-rate "$NSE_MIN_RATE" --script ms-sql-info,ms-sql-empty-password,ms-sql-brute,ms-sql-xp-cmdshell,ms-sql-config,ms-sql-ntlm-info,ms-sql-tables,ms-sql-hasdbaccess,ms-sql-dac,ms-sql-dump-hashes --script-args mssql.instance-port=1433,mssql.username=sa,mssql.password=,mssql.instance-name=MSSQLSERVER -p 1433 -oN ${NSE_DIR}/db_mssql.txt -iL "$(open_targets_file_for_ports tcp 1433 mssql)" --open
+    nmap -d -n -sV "-${TIMING}" --script-timeout "$SCRIPT_TIMEOUT" --min-rate "$NSE_MIN_RATE" --script ms-sql-info,ms-sql-empty-password,ms-sql-brute,ms-sql-xp-cmdshell,ms-sql-config,ms-sql-ntlm-info,ms-sql-tables,ms-sql-hasdbaccess,ms-sql-dac,ms-sql-dump-hashes --script-args mssql.instance-port=1433,mssql.username=sa,mssql.password=,mssql.instance-name=MSSQLSERVER -p 1433 -oN ${NSE_DIR}/db_mssql.txt -iL "$(open_targets_file_for_ports tcp 1433 mssql)" --open
   
   run_if_open "Oracle NSE" tcp "1521" \
-    nmap -d -n -sV "-${TIMING}" --min-rate "$NSE_MIN_RATE" --script oracle-tns-version,oracle-sid-brute -p 1521 -oN ${NSE_DIR}/s_oracle.txt -iL "$(open_targets_file_for_ports tcp 1521 oracle)"
+    nmap -d -n -sV "-${TIMING}" --script-timeout "$SCRIPT_TIMEOUT" --min-rate "$NSE_MIN_RATE" --script oracle-tns-version,oracle-sid-brute -p 1521 -oN ${NSE_DIR}/s_oracle.txt -iL "$(open_targets_file_for_ports tcp 1521 oracle)"
   
   run_if_open "NFS NSE" tcp "2049" \
-    nmap -d -n -sV "-${TIMING}" --min-rate "$NSE_MIN_RATE" --script nfs-ls,nfs-showmount,nfs-statfs -p 2049 -oN ${NSE_DIR}/s_nfs.txt -iL "$(open_targets_file_for_ports tcp 2049 nfs)" --open
+    nmap -d -n -sV "-${TIMING}" --script-timeout "$SCRIPT_TIMEOUT" --min-rate "$NSE_MIN_RATE" --script nfs-ls,nfs-showmount,nfs-statfs -p 2049 -oN ${NSE_DIR}/s_nfs.txt -iL "$(open_targets_file_for_ports tcp 2049 nfs)" --open
   
   run_if_open "MySQL NSE" tcp "3306" \
-    nmap -d -n -sV "-${TIMING}" --min-rate "$NSE_MIN_RATE" --script mysql-audit,mysql-databases,mysql-dump-hashes,mysql-empty-password,mysql-enum,mysql-info,mysql-query,mysql-users,mysql-variables,mysql-vuln-cve2012-2122 -p 3306 -oN ${NSE_DIR}/db_mysql.txt -iL "$(open_targets_file_for_ports tcp 3306 mysql)" --open
+    nmap -d -n -sV "-${TIMING}" --script-timeout "$SCRIPT_TIMEOUT" --min-rate "$NSE_MIN_RATE" --script mysql-audit,mysql-databases,mysql-dump-hashes,mysql-empty-password,mysql-enum,mysql-info,mysql-query,mysql-users,mysql-variables,mysql-vuln-cve2012-2122 -p 3306 -oN ${NSE_DIR}/db_mysql.txt -iL "$(open_targets_file_for_ports tcp 3306 mysql)" --open
   
   run_if_open "RDP NSE" tcp "3389" \
-    nmap -d -n -sV "-${TIMING}" --min-rate "$NSE_MIN_RATE" --script 'rdp-enum-encryption or rdp-vuln-ms12-020 or rdp-ntlm-info' -p 3389 -oN ${NSE_DIR}/s_rdp.txt -iL "$(open_targets_file_for_ports tcp 3389 rdp)" --open
+    nmap -d -n -sV "-${TIMING}" --script-timeout "$SCRIPT_TIMEOUT" --min-rate "$NSE_MIN_RATE" --script 'rdp-enum-encryption or rdp-vuln-ms12-020 or rdp-ntlm-info' -p 3389 -oN ${NSE_DIR}/s_rdp.txt -iL "$(open_targets_file_for_ports tcp 3389 rdp)" --open
   
   if [[ "$NO_UDP" != true ]]; then
     run_if_open "SIP NSE" udp "5060" \
-      run_privileged nmap -d -n -sU -sV "-${TIMING}" --min-rate "$NSE_MIN_RATE" --script 'sip-* and not dos' -p 5060 -oN ${NSE_DIR}/s_sip.txt -iL "$(open_targets_file_for_ports udp 5060 sip)" --open
+      run_privileged nmap -d -n -sU -sV "-${TIMING}" --script-timeout "$SCRIPT_TIMEOUT" --min-rate "$NSE_MIN_RATE" --script 'sip-* and not dos' -p 5060 -oN ${NSE_DIR}/s_sip.txt -iL "$(open_targets_file_for_ports udp 5060 sip)" --open
   fi
   
   run_if_open "VNC NSE" tcp "5800,5801,5900,5901" \
-    nmap -d -n -sV "-${TIMING}" --min-rate "$NSE_MIN_RATE" --script 'vnc-* and not dos' -p 5800,5801,5900,5901 -oN ${NSE_DIR}/s_vnc.txt -iL "$(open_targets_file_for_ports tcp 5800,5801,5900,5901 vnc)" --open
+    nmap -d -n -sV "-${TIMING}" --script-timeout "$SCRIPT_TIMEOUT" --min-rate "$NSE_MIN_RATE" --script 'vnc-* and not dos' -p 5800,5801,5900,5901 -oN ${NSE_DIR}/s_vnc.txt -iL "$(open_targets_file_for_ports tcp 5800,5801,5900,5901 vnc)" --open
 
   print_section 'Metasploit Checks'
   if [[ "$NO_MSF" == true ]]; then
