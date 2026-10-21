@@ -151,6 +151,7 @@ run_msf_auxiliary_checks() {
   rm -f "${MSF_DIR}"/metasploit_auxiliary_*.rc "${MSF_RESULT_DIR}"/*.txt 2>/dev/null || true
   : > "$index_rc_file"
   : > "${MSF_DIR}/msfconsole.log"
+  : > "${MSF_DIR}/run_status.tsv"
 
   while IFS=$'\t' read -r proto port; do
     [[ -n "${proto:-}" && -n "${port:-}" ]] || continue
@@ -212,6 +213,7 @@ run_msf_auxiliary_checks() {
         msfconsole -q -r "$rc_file"
       fi
     } >> "${MSF_DIR}/msfconsole.log" 2>&1 || status=$?
+    printf '%s\t%s\n' "${rc_labels[$index]}" "$status" >> "${MSF_DIR}/run_status.tsv"
     if [[ "$status" -ne 0 ]]; then
       if [[ "$status" -eq 143 ]]; then
         printf '%sMetasploit Auxiliary For %s Timed Out:%s Continuing...\n' "$CLR_YELLOW" "${rc_labels[$index]}" "$CLR_RESET"

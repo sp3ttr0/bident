@@ -24,7 +24,7 @@ usage() {
     '  --msf-threads N   THREADS value for Metasploit scanner modules. Default: 16.' \
     '  --no-udp          Skip UDP scans and UDP follow-up checks.' \
     '  --responder       Start Responder on eth0 in a separate screen session.' \
-    '  --script-timeout T NSE limit per instance: 15m default; 0 unlimited.' \
+    '  --script-timeout T NSE limit per instance: 30m default; 0 unlimited.' \
     '  --tool-timeout N  Timeout for external tools, in seconds. Default: disabled.' \
     '  -T1..-T5          Set the Nmap timing template. Default: -T4.' \
     '' \

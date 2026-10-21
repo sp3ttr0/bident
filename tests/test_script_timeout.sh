@@ -7,11 +7,11 @@ source lib/utils.sh
 source lib/checks.sh
 source lib/report.sh
 source lib/workflow.sh
-[[ "$SCRIPT_TIMEOUT" == 15m ]]
+[[ "$SCRIPT_TIMEOUT" == 30m ]]
 
 # Stop after argument validation; do not run any network commands.
 require_root_scan_run() { printf 'validated:%s\n' "$SCRIPT_TIMEOUT"; exit 0; }
-for value in 15m 1h 900 0 1.5s 500ms; do
+for value in 30m 15m 1h 900 0 1.5s 500ms; do
   output="$(main -t 192.0.2.1 --script-timeout "$value")"
   [[ "$output" == "validated:$value" ]]
 done
@@ -42,6 +42,9 @@ grep -Fq 'Incomplete: command failed (exit 2)' "$LOG_DIR/nse_status.tsv"
 grep -Fq 'Finished; review output' "$LOG_DIR/nse_status.tsv"
 grep -Fq 'username: discovered-user' "$LOG_DIR/nse_MySQL_NSE.log"
 append_nse_status_section report.html
+! grep -Fq 'execution log' report.html
+! grep -Fq 'not evidence that credentials or vulnerabilities are absent' report.html
+append_nse_status_artifacts report.html
 grep -Fq 'Incomplete: script timeout' report.html
 grep -Fq 'logs/nse_SSH_NSE.log' report.html
 printf 'Script timeout checks passed.\n'

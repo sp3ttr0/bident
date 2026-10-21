@@ -94,7 +94,7 @@ Run Bident with sudo/root for scans. Privileged scans run as root, and when laun
 --no-udp          Skip UDP scans and UDP follow-up checks.
 --responder       Start Responder on eth0 in a separate screen session.
 --tool-timeout N  Timeout for external tools, in seconds. Default: disabled.
---script-timeout T Timeout per NSE script instance. Default: 15m; 0 = unlimited.
+--script-timeout T Timeout per NSE script instance. Default: 30m; 0 = unlimited.
                    Accepts seconds or ms/s/m/h suffixes (e.g. 900, 15m, 1h).
 -T1..-T5          Set the Nmap timing template. Default: -T4.
 ```
@@ -165,6 +165,12 @@ Nmap may discard the timed-out script instance’s output; results already writt
 by other checks and captured execution logs remain available. No credential
 result from an incomplete check must be interpreted as a confirmed absence.
 
+Metasploit findings require module-specific positive result messages. Command
+echoes, stack traces, and generic completion messages do not establish findings.
+Failures and nonzero process exits are listed under **Core Artifacts → Metasploit
+Failed / Incomplete Checks**, with execution-log links. A genuine result for one
+target is retained even if another target fails in the same module output.
+
 ```text
 base_scans/              SYN, connect, and UDP Nmap base scan outputs.
 nmap_scripts/            Targeted Nmap NSE result files.
@@ -177,6 +183,17 @@ summary.json             Machine-readable JSON summary.
 ```
 
 ## Disclaimer
+
+### Keeping local results out of Git
+
+The `.gitignore` excludes standard scan artifacts, common result folders,
+local scope/target lists, and common credential/key exports. Use `-o results/`
+for a custom output location inside the repository. If you choose a different
+folder name, add it to `.gitignore` before staging files. Arbitrary output names
+and credentials embedded in source files cannot be protected by filename rules.
+Files already tracked by Git are unaffected by ignore rules. Check
+`git status --short` and `git diff --cached` before committing. Keep `tests/`
+and the bundled SNMP community wordlist; tests must contain synthetic data only.
 
 Bident is intended only for authorized security testing, validation, and assessment work. Some findings may be false positives and should be manually verified before action is taken. Do not run this tool against systems, networks, or assets you do not own or do not have explicit permission to test.
 

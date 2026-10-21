@@ -1,12 +1,26 @@
-html_escape_file() {
+# Normalize terminal formatting before escaping output for HTML. Raw files
+# remain unchanged; every embedded evidence view uses this shared renderer.
+html_escape_stream() {
   awk '
+    BEGIN { esc = sprintf("%c", 27); bell = sprintf("%c", 7) }
     {
+      # OSC titles/hyperlinks, then CSI colors and cursor controls.
+      gsub(esc "\\][^" bell esc "]*(" bell "|" esc "\\\\)", "")
+      gsub(esc "\\[[0-?]*[ -/]*[@-~]", "")
+      # Some tools/loggers save printable escapes or drop the ESC byte.
+      gsub(/\\(x1[bB]|033|u001[bB])\[[0-9;]*m/, "")
+      gsub(/\[[0-9;]*m/, "")
+      gsub(/\r/, "")
       gsub(/&/, "\\&amp;")
       gsub(/</, "\\&lt;")
       gsub(/>/, "\\&gt;")
       print
     }
-  ' "$1"
+  '
+}
+
+html_escape_file() {
+  html_escape_stream < "$1"
 }
 
 file_size_bytes() {
@@ -29,35 +43,14 @@ html_escape_file_preview() {
   head_bytes=$((max_bytes * 3 / 4))
   tail_bytes=$((max_bytes - head_bytes))
 
-  head -c "$head_bytes" "$file" | awk '
-    {
-      gsub(/&/, "\\&amp;")
-      gsub(/</, "\\&lt;")
-      gsub(/>/, "\\&gt;")
-      print
-    }
-  '
+  head -c "$head_bytes" "$file" | html_escape_stream
   printf '\n\n[ Bident truncated this evidence preview: %s bytes total, showing first %s bytes and last %s bytes. Open the source file above for the full output. ]\n\n' \
     "$size" "$head_bytes" "$tail_bytes"
-  tail -c "$tail_bytes" "$file" | awk '
-    {
-      gsub(/&/, "\\&amp;")
-      gsub(/</, "\\&lt;")
-      gsub(/>/, "\\&gt;")
-      print
-    }
-  '
+  tail -c "$tail_bytes" "$file" | html_escape_stream
 }
 
 html_escape_text() {
-  printf '%s' "$1" | awk '
-    {
-      gsub(/&/, "\\&amp;")
-      gsub(/</, "\\&lt;")
-      gsub(/>/, "\\&gt;")
-      print
-    }
-  '
+  printf '%s' "$1" | html_escape_stream
 }
 
 title_case_acronyms() {
@@ -292,10 +285,20 @@ append_base_scan_port_evidence() {
 }
 
 append_nse_status_section() {
+  local outfile="$1"
+  {
+    printf '  <section class="notice" aria-label="NSE check status">\n'
+    printf '    <strong>NSE Check Status</strong>\n'
+    printf '    <p>Script timeout: %s per instance (0 = unlimited). Timed-out checks are incomplete. Details are available under Core Artifacts &gt; NSE Check Status.</p>\n' "$(html_escape_text "$SCRIPT_TIMEOUT")"
+    printf '  </section>\n'
+  } >> "$outfile"
+}
+
+append_nse_status_artifacts() {
   local outfile="$1" label status log_file
   {
-    printf '  <h2>NSE Check Status</h2>\n'
-    printf '  <p class="muted">Script timeout: %s per instance (0 = unlimited). Timed-out checks are incomplete, not evidence that credentials or vulnerabilities are absent.</p>\n' "$(html_escape_text "$SCRIPT_TIMEOUT")"
+    printf '  <details class="artifact artifact-group">\n'
+    printf '    <summary>NSE Check Status</summary>\n'
     if [[ -s "${LOG_DIR}/nse_status.tsv" ]]; then
       printf '  <ul>\n'
       while IFS=$'\t' read -r label status log_file; do
@@ -306,6 +309,7 @@ append_nse_status_section() {
     else
       printf '  <p class="muted">No follow-up NSE checks recorded for this run.</p>\n'
     fi
+    printf '  </details>\n'
   } >> "$outfile"
 }
 
@@ -422,28 +426,100 @@ append_finding_item() {
   } >> "$outfile"
 }
 
+# Only explicit module result messages qualify as Metasploit findings.
+# The HTML renderer also normalizes ANSI sequences before classification.
+msf_finding_lines() {
+  local file="$1" kind="${1##*/}"
+  html_escape_stream < "$file" | awk -v kind="$kind" '
+    {
+      line = $0
+      lower = tolower(line)
+      if (lower ~ /^[[:space:]]*resource[[:space:](]/ || lower ~ / => /) next
+      if (lower ~ /^\[-\]/ || lower ~ /not vulnerable|not likely vulnerable|does not appear vulnerable|not exploitable|not (an )?open (smtp )?relay|no anonymous|anonymous.*(denied|disabled|not allowed)/) { shares = 0; next }
+      good = (line ~ /^\[\+\]/)
+      result = (line ~ /^\[[+*]\]/)
+      found = 0
+      if (kind ~ /^ftp_anonymous_/) found = good && lower ~ /anonymous.*(allowed|enabled|login|read|write)|logged in successfully/
+      else if (kind ~ /^smtp_relay_/) found = good && lower ~ /(open.*relay.*detected|relay.*(accepted|allowed|successful))/
+      else if (kind ~ /^smb_ms17_010_/) found = good && lower ~ /(host is likely vulnerable|ms17-010.*(detected|vulnerable)|vulnerable.*ms17-010)/
+      else if (kind ~ /^rdp_scanner_/) found = result && lower ~ /detected rdp on[[:space:]]+[^[:space:]]+/
+      else if (kind ~ /^cve_2019_0708_bluekeep_/) found = good && lower ~ /(target (is|appears to be) vulnerable|bluekeep.*vulnerable|vulnerable.*bluekeep)/
+      else if (kind ~ /^vnc_none_auth_/) found = good && lower ~ /(security types includes none|no authentication (required|needed)|authentication.*disabled|does not require authentication)/
+      else if (kind ~ /^snmp_login_/) found = good && lower ~ /login successful:/
+      else if (kind ~ /^snmp_enumusers_/) found = good && lower ~ /found[[:space:]]+[1-9][0-9]*[[:space:]]+users:/
+      else if (kind ~ /^snmp_enumshares_/) {
+        if (result) shares = good
+        if (shares && line ~ /^[[:space:]]+[^[:space:]].* - .+ \([^)]+\)/) found = 1
+      }
+      else if (kind ~ /^snmp_enum_/) {
+        # A populated field is evidence; headings such as "System information"
+        # alone are not. Metasploit prints these as indented table rows.
+        found = lower ~ /^[[:space:]]*(hostname|description|contact|location|uptime (snmp|system))[[:space:]]*:[[:space:]]*[^[:space:]-]/
+      }
+      if (found) print line
+    }
+  '
+}
+
+msf_failure_lines() {
+  html_escape_stream < "$1" | awk '
+    {
+      lower = tolower($0)
+      if (lower ~ /^[[:space:]]*resource[[:space:](]/ || lower ~ / => /) next
+      if (lower ~ /auxiliary (failed|aborted)|failed to (load|execute|run).*module|unknown command|uninitialized constant|call stack:|(^|[^a-z])(nameerror|nomethoderror|loaderror|syntaxerror|runtimeerror|optionvalidateerror|msf::optionvalidateerror)|exception|timed out/ ||
+          (lower ~ /^\[-\]/ && lower ~ /unable to |connection (refused|reset)|unreachable|handshake failed|auth negotiation failed|parsing error|unknown error/)) print
+    }
+  '
+}
+
+append_msf_failed_artifacts() {
+  local outfile="$1" file failures temp_file label status
+  temp_file="$(mktemp "${TMPDIR:-/tmp}/bident_msf_failed.XXXXXX")"
+  for file in "${MSF_RESULT_DIR}"/*.txt "${MSF_DIR}/msfconsole.log"; do
+    [[ -s "$file" ]] || continue
+    failures="$(msf_failure_lines "$file")"
+    [[ -n "$failures" ]] || continue
+    {
+      printf '    <details class="artifact artifact-group"><summary>%s — Failed / incomplete</summary>\n' "$(html_escape_text "$(default_result_label "$file")")"
+      printf '      <p><a href="%s">Full execution log</a></p>\n' "$(html_escape_text "$file")"
+      printf '      <pre>%s</pre>\n' "$failures"
+      printf '    </details>\n'
+    } >> "$temp_file"
+  done
+  if [[ -s "${MSF_DIR}/run_status.tsv" ]]; then
+    while IFS=$'\t' read -r label status; do
+      [[ "$status" == 0 ]] && continue
+      printf '    <p>%s: Failed / incomplete (exit %s). <a href="%s">Execution log</a></p>\n' \
+        "$(html_escape_text "$label")" "$(html_escape_text "$status")" "$(html_escape_text "${MSF_DIR}/msfconsole.log")" >> "$temp_file"
+    done < "${MSF_DIR}/run_status.tsv"
+  fi
+  if [[ -s "$temp_file" ]]; then
+    {
+      printf '  <details class="artifact artifact-group"><summary>Metasploit Failed / Incomplete Checks</summary>\n'
+      cat "$temp_file"
+      printf '  </details>\n'
+    } >> "$outfile"
+  fi
+  rm -f "$temp_file"
+}
+
 append_finding_glob_item() {
   local outfile="$1"
   local severity="$2"
   local title="$3"
   local source_pattern="$4"
   local detail="${5:-}"
-  local success_regex="${6:-}"
-  local reject_regex="${7:-}"
   local source_file
   local files=()
   local count=0
+  local evidence_count
 
   for source_file in $source_pattern; do
     [[ -s "$source_file" ]] || continue
-    if [[ -n "$success_regex" ]] && ! grep -Eiq "$success_regex" "$source_file"; then
-      continue
-    fi
-    if [[ -n "$reject_regex" ]] && grep -Eiq "$reject_regex" "$source_file"; then
-      continue
-    fi
+    evidence_count="$(msf_finding_lines "$source_file" | awk 'END {print NR + 0}')"
+    [[ "$evidence_count" -gt 0 ]] || continue
     files+=("$source_file")
-    count=$((count + $(finding_count_for_file "$source_file")))
+    count=$((count + evidence_count))
   done
 
   [[ "${#files[@]}" -gt 0 ]] || return 0
@@ -459,7 +535,7 @@ append_finding_glob_item() {
     printf '      <pre class="finding-evidence">'
     for source_file in "${files[@]}"; do
       printf '===== %s =====\n' "$(html_escape_text "$source_file")"
-      html_escape_file_preview "$source_file"
+      msf_finding_lines "$source_file"
       printf '\n'
     done
     printf '</pre>\n'
@@ -558,16 +634,16 @@ append_findings_summary_section() {
   append_finding_item "$temp_file" "Review" "DNSSec Not Configured" "${TOOL_DIR}/dnssec_not_configured.txt"
   append_finding_item "$temp_file" "Review" "DNS Recursion Enabled" "${TOOL_DIR}/dns_recursion_enabled.txt"
   append_finding_item "$temp_file" "Review" "IKE VPN Peer Weak Encryption" "${TOOL_DIR}/ike_weak_encryption.txt"
-  append_finding_glob_item "$temp_file" "Review" "FTP Anonymous Enabled" "${MSF_RESULT_DIR}/ftp_anonymous_tcp_*.txt" "" "anonymous.*(allowed|enabled|login|read|write)|logged in successfully|success.*anonymous" "failed to load module|unknown command|timed out|no anonymous|anonymous.*(denied|disabled|not allowed)|not vulnerable|not exploitable"
-  append_finding_glob_item "$temp_file" "Review" "SMTP Open Relay" "${MSF_RESULT_DIR}/smtp_relay_tcp_*.txt" "" "open relay|relay.*(accepted|allowed|successful)|success.*relay" "failed to load module|unknown command|timed out|not an open relay|relay.*(denied|not allowed|failed)|not vulnerable|not exploitable"
-  append_finding_glob_item "$temp_file" "Review" "Server Message Block (SMB) MS17-010 (EternalBlue) Vulnerability" "${MSF_RESULT_DIR}/smb_ms17_010_tcp_*.txt" "" "vulnerable|ms17-010.*detected|likely.*vulnerable" "failed to load module|unknown command|timed out|not vulnerable|not likely vulnerable|does not appear|not exploitable"
-  append_finding_glob_item "$temp_file" "Review" "Remote Desktop Protocol Detection" "${MSF_RESULT_DIR}/rdp_scanner_tcp_*.txt" "" "detected|rdp|remote desktop|protocol" "failed to load module|unknown command|timed out|not found|no response|connection refused|denied"
-  append_finding_glob_item "$temp_file" "Review" "Remote Desktop Protocol (RDP) BlueKeep Vulnerability" "${MSF_RESULT_DIR}/cve_2019_0708_bluekeep_tcp_*.txt" "" "vulnerable|bluekeep.*detected|likely.*vulnerable" "failed to load module|unknown command|timed out|not vulnerable|not likely vulnerable|does not appear|not exploitable"
-  append_finding_glob_item "$temp_file" "Review" "Virtual Network Computing (VNC) None Authentication" "${MSF_RESULT_DIR}/vnc_none_auth_tcp_*.txt" "" "no authentication|required.*false|authentication.*disabled|does not require authentication" "failed to load module|unknown command|timed out|no authentication types available|too many authentication failures|auth negotiation failed|requires authentication|authentication failed|not vulnerable|not exploitable"
-  append_finding_glob_item "$temp_file" "Review" "SNMP Default/Weak Community String" "${MSF_RESULT_DIR}/snmp_login_udp_*.txt" "" "login successful|success.*community|community.*(public|private)|\\[\\+\\].*(public|private)" "failed to load module|unknown command|timed out|login failed|no valid|not found|denied"
-  append_finding_glob_item "$temp_file" "Review" "SNMP Information Disclosure" "${MSF_RESULT_DIR}/snmp_enum_udp_*.txt" "" "system information|sysdescr|hostname|uptime|contact|location|interfaces|processes|storage" "failed to load module|unknown command|timed out|no access|not found|denied"
-  append_finding_glob_item "$temp_file" "Review" "SNMP Users Enumeration" "${MSF_RESULT_DIR}/snmp_enumusers_udp_*.txt" "" "\\[\\+\\].*(user|account|uid)|(^|[[:space:]])(User|Username|Account|UID)[[:space:]]*[:=]" "failed to load module|unknown command|timed out|no access|not found|denied"
-  append_finding_glob_item "$temp_file" "Review" "SNMP Shares Enumeration" "${MSF_RESULT_DIR}/snmp_enumshares_udp_*.txt" "" "\\[\\+\\].*(share|path)|(^|[[:space:]])(Share|Share Name|Path)[[:space:]]*[:=]" "failed to load module|unknown command|timed out|no access|not found|denied"
+  append_finding_glob_item "$temp_file" "Review" "FTP Anonymous Enabled" "${MSF_RESULT_DIR}/ftp_anonymous_tcp_*.txt"
+  append_finding_glob_item "$temp_file" "Review" "SMTP Open Relay" "${MSF_RESULT_DIR}/smtp_relay_tcp_*.txt"
+  append_finding_glob_item "$temp_file" "Review" "Server Message Block (SMB) MS17-010 (EternalBlue) Vulnerability" "${MSF_RESULT_DIR}/smb_ms17_010_tcp_*.txt"
+  append_finding_glob_item "$temp_file" "Review" "Remote Desktop Protocol Detection" "${MSF_RESULT_DIR}/rdp_scanner_tcp_*.txt"
+  append_finding_glob_item "$temp_file" "Review" "Remote Desktop Protocol (RDP) BlueKeep Vulnerability" "${MSF_RESULT_DIR}/cve_2019_0708_bluekeep_tcp_*.txt"
+  append_finding_glob_item "$temp_file" "Review" "Virtual Network Computing (VNC) None Authentication" "${MSF_RESULT_DIR}/vnc_none_auth_tcp_*.txt"
+  append_finding_glob_item "$temp_file" "Review" "SNMP Default/Weak Community String" "${MSF_RESULT_DIR}/snmp_login_udp_*.txt"
+  append_finding_glob_item "$temp_file" "Review" "SNMP Information Disclosure" "${MSF_RESULT_DIR}/snmp_enum_udp_*.txt"
+  append_finding_glob_item "$temp_file" "Review" "SNMP Users Enumeration" "${MSF_RESULT_DIR}/snmp_enumusers_udp_*.txt"
+  append_finding_glob_item "$temp_file" "Review" "SNMP Shares Enumeration" "${MSF_RESULT_DIR}/snmp_enumshares_udp_*.txt"
 
   {
     printf '  <h2>Findings Summary</h2>\n'
@@ -1672,6 +1748,8 @@ HTML
     targets_with_open_ports/open_ports_by_target.txt
   append_core_artifact_group "$report_file" "Nmap Script Results" \
     "${NSE_DIR}"/*.txt
+  append_nse_status_artifacts "$report_file"
+  append_msf_failed_artifacts "$report_file"
   append_core_artifact_group "$report_file" "External Tool Results" \
     "${TOOL_DIR}"/*.txt
   if [[ "${NO_MSF:-false}" != true ]]; then
