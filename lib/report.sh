@@ -416,11 +416,13 @@ append_ssh_weak_cipher_finding() {
     printf '    <li><details class="finding-panel">\n'
     printf '      <summary><span class="finding-severity">Review</span><div><strong>Weak SSH Ciphers</strong><span>%s affected target(s)</span></div></summary>\n' "$target_count"
     printf '      <p class="muted">Targets with encryption cipher warnings or failures from ssh-audit. Key-exchange, host-key, and MAC warnings alone are excluded.</p>\n'
+    printf '      <div data-affected-targets>\n'
+    print_copy_targets_button
     printf '      <div class="service-table-wrap"><table class="service-table"><thead><tr><th>Target IP:Port</th><th>Weak Ciphers</th></tr></thead><tbody>\n'
     while IFS=$'\t' read -r target ciphers; do
       printf '        <tr><td>%s</td><td>%s</td></tr>\n' "$(html_escape_text "$target")" "$(html_escape_text "$ciphers")"
     done <<< "$rows"
-    printf '      </tbody></table></div>\n'
+    printf '      </tbody></table></div></div>\n'
     printf '      <details class="artifact"><summary>SSH Audit Evidence</summary><pre class="finding-evidence">'
     html_escape_file_preview "$source_file"
     printf '</pre></details>\n'
@@ -525,10 +527,16 @@ tool_finding_endpoints() {
   ' | verified_ip_port_lines
 }
 
+print_copy_targets_button() {
+  printf '      <div class="copy-targets-toolbar"><button type="button" class="copy-targets">Copy targets</button><span class="copy-targets-status muted" role="status" aria-live="polite"></span></div>\n'
+}
+
 append_affected_endpoint_list() {
   local endpoints="$1" target target_count
   target_count="$(printf '%s\n' "$endpoints" | awk 'NF {count++} END {print count + 0}')"
-  printf '      <details class="artifact target-panel" open><summary>Affected IP:Port (%s)</summary><pre class="targets">' "$target_count"
+  printf '      <details class="artifact target-panel" data-affected-targets open><summary>Affected IP:Port (%s)</summary>' "$target_count"
+  print_copy_targets_button
+  printf '<pre class="targets">'
   while IFS= read -r target; do
     [[ -n "$target" ]] && printf '%s\n' "$(html_escape_text "$target")"
   done <<< "$endpoints"
@@ -723,9 +731,16 @@ append_finding_glob_item() {
 }
 
 credential_candidate_lines() {
-  local file="$1"
+  local file="$1" msf_port=""
+  if [[ "$file" =~ _(tcp|udp)_([0-9]+)[.]txt$ ]]; then msf_port="${BASH_REMATCH[2]}"; fi
 
-  awk '
+  awk -v msf_port="$msf_port" '
+    BEGIN { esc = sprintf("%c", 27) }
+    function endpoint(ip, port) {
+      if (ip == "" || port == "") return ""
+      return (ip ~ /:/ && ip !~ /^\[/ ? "[" ip "]" : ip) ":" port
+    }
+
     function trim(value) {
       gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
       return value
@@ -757,6 +772,27 @@ credential_candidate_lines() {
     }
     {
       line = trim($0)
+      gsub(esc "\\[[0-?]*[ -/]*[@-~]", "", line)
+      gsub(/\[[0-9;]*m/, "", line)
+      found_endpoint = ""
+      if (line ~ /^Nmap scan report for /) {
+        host = $NF; gsub(/[()]/, "", host); port = ""; in_mysql_users = 0; next
+      }
+      if (line ~ /^[0-9]+\/(tcp|udp)[[:space:]]+open[[:space:]]/) {
+        port = $1; sub(/\/.*/, "", port); in_mysql_users = 0; next
+      }
+      if (line ~ /^Host script results:/) { port = ""; in_mysql_users = 0; next }
+      if (line ~ /^===== / || line ~ /^Command:/ || line ~ /^#/ || line ~ /^resource[[:space:](]/) {
+        host = ""; port = ""; in_mysql_users = 0
+      }
+      # A result-line endpoint overrides any context. Never use IPs found
+      # inside passwords, URLs, command echoes, or stack traces.
+      if (line ~ /^\[[+*]\][[:space:]]+/) {
+        peer = line; sub(/^\[[+*]\][[:space:]]+/, "", peer); sub(/[[:space:],].*$/, "", peer)
+        if (peer ~ /^([0-9.]+|\[[0-9a-fA-F:]+\]):[0-9]+$/) found_endpoint = peer
+        else if (peer ~ /^[0-9]+[.][0-9]+[.][0-9]+[.][0-9]+$/) found_endpoint = endpoint(peer, msf_port)
+      } else if (line ~ /^SMB[[:space:]]+/) found_endpoint = endpoint($2, $3)
+      else found_endpoint = endpoint(host, port)
       # Nmap headers and echoed invocations describe requested checks,
       # not discovered credentials (for example --script-args user=...).
       if (line ~ /^#/ || tolower(line) ~ /(^|[[:space:]])([^[:space:]]*\/)?nmap([[:space:]]|$)/) {
@@ -774,14 +810,14 @@ credential_candidate_lines() {
           username = line
           sub(/^\|[_ ]?[[:space:]]+/, "", username)
           username = trim(username)
-          print NR "\034" username "\034username: " username
+          print NR "\034" username "\034username: " username "\034" found_endpoint
           if (line ~ /^\|_/) in_mysql_users = 0
           next
         }
         in_mysql_users = 0
       }
       if (line != "" && is_credential_line(line)) {
-        print NR "\034" line
+        print NR "\034" line "\034\034" found_endpoint
       }
     }
   ' "$file"
@@ -839,44 +875,23 @@ append_findings_summary_section() {
 }
 
 credential_display_value() {
-  local line="$1"
-  local value=""
-  local label=""
-  local secret=""
-
-  value="$(printf '%s' "$line" | sed -nE 's/.*([Uu]sername|[Uu]ser|[Ll]ogin|[Aa]ccount|[Aa]cct|[Pp]assword|[Pp]asswd|[Pp]wd|[Cc]redential|[Hh]ash|[Ss]ecret|[Tt]oken)[=:][[:space:]]*([^[:space:]&;,"'"'"'<>]+).*/\1:::BIDENT:::\2/p' | head -n 1)"
-  if [[ -n "$value" ]]; then
-    label="${value%%:::BIDENT:::*}"
-    secret="${value#*:::BIDENT:::}"
-    label="$(printf '%s' "$label" | tr '[:upper:]' '[:lower:]')"
-    case "$label" in
-      acct) label="account" ;;
-      passwd|pwd) label="password" ;;
-    esac
-    printf '%s: %s' "$label" "$secret"
-    return
-  fi
-
-  value="$(printf '%s' "$line" | sed -nE 's/.*[?&]([Uu]sername|[Uu]ser|[Ll]ogin|[Aa]ccount|[Aa]cct|[Pp]assword|[Pp]asswd|[Pp]wd|[Tt]oken)=([^&[:space:]<>"'"'"']+).*/\1:::BIDENT:::\2/p' | head -n 1)"
-  if [[ -n "$value" ]]; then
-    label="${value%%:::BIDENT:::*}"
-    secret="${value#*:::BIDENT:::}"
-    label="$(printf '%s' "$label" | tr '[:upper:]' '[:lower:]')"
-    case "$label" in
-      acct) label="account" ;;
-      passwd|pwd) label="password" ;;
-    esac
-    printf '%s: %s' "$label" "$secret"
-    return
-  fi
-
-  if printf '%s' "$line" | grep -Eiq 'anonymous'; then
-    printf 'anonymous access'
-  elif printf '%s' "$line" | grep -Eiq 'ntlm'; then
-    printf 'NTLM-related evidence'
-  else
-    printf 'credential-related keyword'
-  fi
+  printf '%s\n' "$1" | awk '
+    {
+      line = $0
+      sub(/^\|[_ ]*[[:space:]]*/, "", line)
+      sub(/^\[[+*!-]\][[:space:]]*/, "", line)
+      lower = tolower(line)
+      if (lower ~ /^(user(name)?|login|account|acct|password|passwd|pwd|credential|credentials|hash|secret|token)[[:space:]]*[:=]/) {
+        label = lower; sub(/[:=].*$/, "", label); sub(/[[:space:]]+$/, "", label)
+        value = line; sub(/^[^:=]*[:=][[:space:]]*/, "", value)
+        if (label == "acct") label = "account"
+        if (label == "passwd" || label == "pwd") label = "password"
+        print label ": " value
+      } else if (match(lower, /login successful:[[:space:]]*/)) {
+        print "credentials: " substr(line, RSTART + RLENGTH)
+      } else print line
+    }
+  '
 }
 
 append_credential_summary_section() {
@@ -889,25 +904,30 @@ append_credential_summary_section() {
   local display_value
   local total_count=0
   local max_items=80
+  local endpoint endpoint_verified
 
   temp_file="$(mktemp "${TMPDIR:-/tmp}/bident_credentials.XXXXXX")"
   for file in "${NSE_DIR}"/*.txt "${TOOL_DIR}"/*.txt "${MSF_RESULT_DIR}"/*.txt; do
     [[ -s "$file" ]] || continue
     file_label="$(default_result_label "$file")"
-    while IFS=$'\034' read -r line_number line_text display_value; do
+    while IFS=$'\034' read -r line_number line_text display_value endpoint; do
       [[ -n "${line_text:-}" ]] || continue
       total_count=$((total_count + 1))
       [[ "$total_count" -le "$max_items" ]] || continue
       if [[ -z "$display_value" ]]; then
         display_value="$(credential_display_value "$line_text")"
       fi
+      endpoint="$(printf '%s\n' "$endpoint" | verified_ip_port_lines)"
+      endpoint_verified=false
+      if [[ -n "$endpoint" ]]; then endpoint_verified=true; else endpoint='Not identified'; fi
       {
-        printf '    <li><details class="finding-panel">\n'
-        printf '      <summary><span class="finding-severity">Review</span><div><strong>%s</strong><span>%s</span><p>%s:%s</p></div></summary>\n' \
+        printf '    <li data-credential-entry><details class="finding-panel">\n'
+        printf '      <summary><span class="finding-severity">Review</span><div><strong class="credential-value">%s</strong><span>%s</span><p>%s:%s</p></div></summary>\n' \
           "$(html_escape_text "$display_value")" \
           "$(html_escape_text "$file_label")" \
           "$(html_escape_text "$file")" \
           "$(html_escape_text "$line_number")"
+        printf '      <p>Found at: <span class="credential-endpoint" data-verified="%s">%s</span></p>\n' "$endpoint_verified" "$(html_escape_text "$endpoint")"
         printf '      <pre class="finding-evidence">%s</pre>\n' "$(html_escape_text "$line_text")"
         printf '    </details></li>\n'
       } >> "$temp_file"
@@ -915,9 +935,10 @@ append_credential_summary_section() {
   done
 
   {
-    printf '  <h2>Possible Usernames / Credentials</h2>\n'
+    printf '  <section data-credential-copy><h2>Possible Usernames / Credentials</h2>\n'
     if [[ -s "$temp_file" ]]; then
       printf '  <p class="muted">These entries were extracted from tool output using credential-related keywords and username enumeration lists. Usernames alone do not confirm valid credentials; entries should be manually verified.</p>\n'
+      printf '  <div class="copy-targets-toolbar"><button class="copy-targets copy-credentials" type="button" data-copy-mode="entries">Copy entries with IP:Port</button><button class="copy-targets copy-credentials" type="button" data-copy-mode="targets">Copy IP:Port only</button><span class="copy-targets-status muted" role="status" aria-live="polite"></span></div>\n'
       printf '  <ul class="finding-list credential-list">\n'
       cat "$temp_file"
       printf '  </ul>\n'
@@ -927,6 +948,7 @@ append_credential_summary_section() {
     else
       printf '  <div class="empty">No username or credential-related lines were detected in saved result files.</div>\n'
     fi
+    printf '  </section>\n'
   } >> "$outfile"
 
   rm -f "$temp_file"
@@ -1312,6 +1334,30 @@ generate_html_report() {
       padding: 8px;
       width: 62px;
     }
+    .copy-targets-toolbar {
+      align-items: center;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      padding: 10px 12px;
+    }
+    .copy-targets {
+      background: var(--panel);
+      border: 1px solid var(--accent);
+      border-radius: 6px;
+      color: var(--accent);
+      cursor: pointer;
+      font: inherit;
+      font-weight: 700;
+      padding: 6px 12px;
+    }
+    .copy-targets:hover,
+    .copy-targets:focus-visible {
+      background: color-mix(in srgb, var(--accent) 12%, var(--panel));
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+    .copy-targets-status { font-size: 12px; }
     .theme-toggle {
       align-items: center;
       border: 1px solid var(--line);
@@ -1950,6 +1996,76 @@ HTML
     cat <<'HTML'
 </main>
 <script>
+  // COPY_TARGETS_START
+  async function copyAffectedTargets(button) {
+    const container = button.closest('[data-affected-targets]');
+    const status = container.querySelector('.copy-targets-status');
+    const list = container.querySelector('pre.targets');
+    const values = list
+      ? list.textContent.split(/\r?\n/)
+      : Array.from(container.querySelectorAll('tbody tr'), row => row.cells[0].textContent);
+    const targets = [...new Set(values.map(value => value.trim()).filter(Boolean))];
+    if (!targets.length) {
+      status.textContent = 'No targets to copy.';
+      return;
+    }
+    const text = targets.join('\n');
+    const copied = await copyReportText(button, text);
+    status.textContent = copied
+      ? `Copied ${targets.length} target${targets.length === 1 ? '' : 's'}.`
+      : 'Copy unavailable. Select the target IP:port values and copy manually.';
+  }
+  document.querySelectorAll('.copy-targets:not(.copy-credentials)').forEach(button => {
+    button.addEventListener('click', () => copyAffectedTargets(button));
+  });
+  async function copyReportText(button, text) {
+    let copied = false;
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+        copied = true;
+      }
+    } catch (_) { /* Local reports may require the fallback below. */ }
+    if (!copied) {
+      const field = document.createElement('textarea');
+      field.value = text;
+      field.setAttribute('readonly', '');
+      field.style.position = 'fixed';
+      field.style.opacity = '0';
+      document.body.appendChild(field);
+      field.select();
+      try { copied = document.execCommand('copy'); } catch (_) { copied = false; }
+      field.remove();
+      button.focus();
+    }
+    return copied;
+  }
+  async function copyCredentialEntries(button) {
+    const section = button.closest('[data-credential-copy]');
+    const status = section.querySelector('.copy-targets-status');
+    const targetsOnly = button.dataset.copyMode === 'targets';
+    const values = Array.from(section.querySelectorAll('[data-credential-entry]'), entry => {
+      const endpointNode = entry.querySelector('.credential-endpoint');
+      const known = endpointNode.dataset.verified === 'true';
+      const endpoint = known ? endpointNode.textContent.trim() : 'Not identified';
+      const value = entry.querySelector('.credential-value').textContent.trim();
+      return targetsOnly ? (known ? endpoint : '') : `${endpoint}\t${value}`;
+    }).filter(Boolean);
+    const unique = [...new Set(values)];
+    if (!unique.length) {
+      status.textContent = targetsOnly ? 'No verified IP:Port values to copy.' : 'No entries to copy.';
+      return;
+    }
+    const copied = await copyReportText(button, unique.join('\n'));
+    const label = targetsOnly ? 'target' : 'entry';
+    status.textContent = copied
+      ? `Copied ${unique.length} ${unique.length === 1 ? label : (targetsOnly ? 'targets' : 'entries')}.`
+      : 'Copy unavailable. Select the entries and copy manually.';
+  }
+  document.querySelectorAll('.copy-credentials').forEach(button => {
+    button.addEventListener('click', () => copyCredentialEntries(button));
+  });
+  // COPY_TARGETS_END
   const root = document.documentElement;
   const toggle = document.getElementById('themeToggle');
   const savedTheme = localStorage.getItem('bident-theme') || 'light';

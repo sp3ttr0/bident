@@ -184,6 +184,13 @@ in Core Artifacts but is omitted from verified finding lists. In particular,
 the existing DNSSEC check records a missing AD flag, which is insufficient to
 promote a target to a verified “DNSSEC not configured” finding.
 
+Possible Usernames / Credentials entries show the source IP:port when the saved
+output identifies it. Use **Copy entries with IP:Port** for tab-separated endpoint
+and entry rows, or **Copy IP:Port only** for unique known endpoints. Entries without
+an attributable endpoint display **Not identified** and are excluded from the
+endpoint-only copy. Copy buttons include the entries displayed in the report
+(up to 80), rather than hidden or truncated results.
+
 ```text
 base_scans/              SYN, connect, and UDP Nmap base scan outputs.
 nmap_scripts/            Targeted Nmap NSE result files.
