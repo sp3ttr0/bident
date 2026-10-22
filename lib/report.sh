@@ -28,25 +28,7 @@ file_size_bytes() {
 }
 
 html_escape_file_preview() {
-  local file="$1"
-  local max_bytes="${REPORT_EVIDENCE_MAX_BYTES:-200000}"
-  local size
-  local head_bytes
-  local tail_bytes
-
-  size="$(file_size_bytes "$file")"
-  if [[ ! "$max_bytes" =~ ^[0-9]+$ || "$max_bytes" -eq 0 || "$size" -le "$max_bytes" ]]; then
-    html_escape_file "$file"
-    return
-  fi
-
-  head_bytes=$((max_bytes * 3 / 4))
-  tail_bytes=$((max_bytes - head_bytes))
-
-  head -c "$head_bytes" "$file" | html_escape_stream
-  printf '\n\n[ Bident truncated this evidence preview: %s bytes total, showing first %s bytes and last %s bytes. Open the source file above for the full output. ]\n\n' \
-    "$size" "$head_bytes" "$tail_bytes"
-  tail -c "$tail_bytes" "$file" | html_escape_stream
+  html_escape_file "$1"
 }
 
 html_escape_text() {
@@ -435,6 +417,15 @@ finding_file_has_verified_evidence() {
   esac
 }
 
+print_cipher_list() {
+  local cipher
+  printf '<ul class="cipher-list">'
+  while IFS= read -r cipher; do
+    [[ -n "$cipher" ]] && printf '<li>%s</li>' "$(html_escape_text "$cipher")"
+  done
+  printf '</ul>'
+}
+
 append_ssh_weak_cipher_finding() {
   local outfile="$1" source_file="${TOOL_DIR}/ssh-audit_results.txt"
   local rows target ciphers target_count
@@ -447,15 +438,21 @@ append_ssh_weak_cipher_finding() {
     END {for (i = 1; i <= n; i++) print order[i] "\t" ciphers[order[i]]}
   ')"
   [[ -n "$rows" ]] || return 0
+  local valid_endpoints
+  valid_endpoints="$(printf '%s\n' "$rows" | cut -f1 | verified_ip_port_lines)"
+  rows="$(awk -F '\t' 'NR==FNR {valid[$0]=1; next} $1 in valid' <(printf '%s\n' "$valid_endpoints") <(printf '%s\n' "$rows"))"
+  [[ -n "$rows" ]] || return 0
   target_count="$(printf '%s\n' "$rows" | awk 'END {print NR}')"
   {
     printf '    <li><details class="finding-panel">\n'
     printf '      <summary><span class="finding-severity">Review</span><div><strong>Weak SSH Ciphers</strong><span>%s affected host(s)</span></div></summary>\n' "$target_count"
     printf '      <div data-affected-targets>\n'
     print_copy_targets_button
-    printf '      <div class="service-table-wrap"><table class="service-table"><thead><tr><th>Host:Port</th><th>Weak Ciphers</th></tr></thead><tbody>\n'
+    printf '      <div class="service-table-wrap"><table class="service-table"><thead><tr><th>Host:Port</th><th>Weak/Deprecated Ciphers Found:</th></tr></thead><tbody>\n'
     while IFS=$'\t' read -r target ciphers; do
-      printf '        <tr><td>%s</td><td>%s</td></tr>\n' "$(html_escape_text "$target")" "$(html_escape_text "$ciphers")"
+      printf '        <tr><td>%s</td><td>' "$(html_escape_text "$target")"
+      printf '%s\n' "$ciphers" | awk 'BEGIN {RS=", "} {print}' | print_cipher_list
+      printf '</td></tr>\n' 
     done <<< "$rows"
     printf '      </tbody></table></div></div>\n'
     printf '      <details class="artifact"><summary>SSH Audit Evidence</summary><pre class="finding-evidence">'
@@ -559,14 +556,14 @@ tool_finding_endpoints() {
       }
       if (title == "IKE VPN Peer Weak Encryption") {
         if ($1 == host && lower ~ /handshake returned/ && lower !~ /no handshake/) handshake = 1
-        if (lower ~ /sa=/ && lower ~ /(enc|hash|group).*(3des|md5|sha1|sha-1|modp768|modp1024|group[[:space:]]*[12]([^0-9]|$))/) weak = 1
+        if (handshake && ($0 ~ /^[[:space:]]*SA=/ || $1 == host) && lower ~ /sa=/ && lower ~ /(enc|hash|group).*(3des|md5|sha1|sha-1|modp768|modp1024|group[[:space:]]*[12]([^0-9]|$))/) weak = 1
         positive = handshake && weak
-        if (($1 == host && lower ~ /handshake returned/) || lower ~ /sa=/) relevant = 1
+        if (($1 == host && lower ~ /handshake returned/) || (handshake && ($0 ~ /^[[:space:]]*SA=/ || $1 == host) && lower ~ /sa=/)) relevant = 1
       }
       if (relevant) { evidence[++evidence_count] = $0; evidence_nr[evidence_count] = NR }
       # NetExec identifies host and actual port on each result line. Ignore
       # the command header, which commonly contains a whole targets file.
-      if ($1 == "SMB" && ((title == "Misconfigured Server Message Block Signing" && $0 ~ /signing:False/) || (title == "SMBv1 Enabled" && $0 ~ /SMBv1:True/))) emit($2, $3, $0, NR)
+      if ($1 == "SMB" && lower !~ /error|failed|failure|timeout|timed out|refused/ && ((title == "Misconfigured Server Message Block Signing" && $0 ~ /signing:False/) || (title == "SMBv1 Enabled" && $0 ~ /SMBv1:True/))) emit($2, $3, $0, NR)
     }
     END { flush() }
   ' | if [[ "$mode" == rows ]]; then cat; else verified_ip_port_lines; fi
@@ -579,7 +576,7 @@ print_copy_targets_button() {
 append_affected_endpoint_list() {
   local endpoints="$1" target target_count
   target_count="$(printf '%s\n' "$endpoints" | awk 'NF {count++} END {print count + 0}')"
-  printf '      <details class="artifact target-panel" data-affected-targets open><summary>Affected Host:Port (%s)</summary>' "$target_count"
+  printf '      <details class="artifact target-panel" data-affected-targets open><summary>Affected (%s)</summary>' "$target_count"
   print_copy_targets_button
   printf '<pre class="targets">'
   while IFS= read -r target; do
@@ -592,10 +589,12 @@ append_tls_cipher_table() {
   local rows_file="$1" endpoints="$2" endpoint ciphers
   printf '      <div data-affected-targets>\n'
   print_copy_targets_button
-  printf '      <div class="service-table-wrap"><table class="service-table"><thead><tr><th>Host:Port</th><th>Weak Ciphers</th></tr></thead><tbody>\n'
+  printf '      <div class="service-table-wrap"><table class="service-table"><thead><tr><th>Host:Port</th><th>Weak/Deprecated Ciphers Found:</th></tr></thead><tbody>\n'
   while IFS= read -r endpoint; do
-    ciphers="$(awk -F '\034' -v host="$endpoint" '$1 == host && $2 != "" && !seen[$2]++ {value=value (value == "" ? "" : ", ") $2} END {print value}' "$rows_file")"
-    printf '        <tr><td>%s</td><td>%s</td></tr>\n' "$(html_escape_text "$endpoint")" "$(html_escape_text "$ciphers")"
+    ciphers="$(awk -F '\034' -v host="$endpoint" '$1 == host && $2 != "" && !seen[$2]++ {value=value (value == "" ? "" : "\n") $2} END {print value}' "$rows_file")"
+    printf '        <tr><td>%s</td><td>' "$(html_escape_text "$endpoint")"
+    printf '%s\n' "$ciphers" | print_cipher_list
+    printf '</td></tr>\n' 
   done <<< "$endpoints"
   printf '      </tbody></table></div></div>\n'
 }
@@ -603,7 +602,7 @@ append_tls_cipher_table() {
 append_endpoint_evidence_table() {
   local rows_file="$1" endpoints="$2" escaped="${3:-false}" cipher_column="${4:-false}"
   local endpoint detail source evidence
-  printf '      <details class="artifact"><summary>Evidence by Host:Port</summary>\n'
+  printf '      <details class="artifact"><summary>Evidence</summary>\n'
   printf '      <div class="service-table-wrap"><table class="service-table"><thead><tr><th>Host:Port</th>'
   if [[ "$cipher_column" == true ]]; then printf '<th>Weak Cipher / Reported Category</th>'; fi
   printf '<th>Verified Output</th><th>Source</th></tr></thead><tbody>\n'
@@ -616,6 +615,12 @@ append_endpoint_evidence_table() {
     printf '<td>%s</td></tr>\n' "$(html_escape_text "$source")"
   done < "$rows_file"
   printf '      </tbody></table></div></details>\n'
+  while IFS= read -r source; do
+    [[ -s "$source" ]] || continue
+    printf '<details class="artifact"><summary>Full Evidence — %s</summary><pre class="finding-evidence">' "$(html_escape_text "$source")"
+    html_escape_file "$source"
+    printf '</pre></details>\n'
+  done < <(awk -F '\034' '{source=$3; sub(/:[0-9]+$/, "", source); if (!seen[source]++) print source}' "$rows_file")
 }
 
 append_finding_item() {
@@ -678,6 +683,7 @@ msf_finding_lines() {
     {
       line = $0
       lower = tolower(line)
+      if (line ~ /^===== / || line ~ /^Command:/) {context=""; shares=0; next}
       if (lower ~ /^[[:space:]]*resource[[:space:](]/ || lower ~ / => /) { context = ""; next }
       if (line ~ /^\[[+*-]\]/) context = ""
       if (kind ~ /^snmp_enumshares_/ && line ~ /^\[\+\]/) context = endpoint_from_message(line)
@@ -685,7 +691,7 @@ msf_finding_lines() {
         context_line = line; sub(/^[^:]*:[[:space:]]*/, "", context_line)
         context = endpoint_from_message(context_line)
       }
-      if (lower ~ /^\[-\]/ || lower ~ /not vulnerable|not likely vulnerable|does not appear vulnerable|not exploitable|not (an )?open (smtp )?relay|no anonymous|anonymous.*(denied|disabled|not allowed)/) { shares = 0; next }
+      if (lower ~ /^\[-\]/ || lower ~ /not vulnerable|not likely vulnerable|not currently vulnerable|does not appear vulnerable|not exploitable|not (an )?open (smtp )?relay|no anonymous|anonymous.*(denied|disabled|not allowed)|login failed|authentication failed|connection refused|timed out|auxiliary failed|unable to|could not/) { shares = 0; next }
       good = (line ~ /^\[\+\]/)
       result = (line ~ /^\[[+*]\]/)
       found = 0
@@ -704,7 +710,8 @@ msf_finding_lines() {
       else if (kind ~ /^snmp_enum_/) {
         # A populated field is evidence; headings such as "System information"
         # alone are not. Metasploit prints these as indented table rows.
-        found = lower ~ /^[[:space:]]*(hostname|description|contact|location|uptime (snmp|system))[[:space:]]*:[[:space:]]*[^[:space:]-]/
+        value=lower; sub(/^[^:]*:[[:space:]]*/, "", value); sub(/[[:space:]]+$/, "", value)
+        found = lower ~ /^[[:space:]]*(hostname|description|contact|location|uptime (snmp|system))[[:space:]]*:[[:space:]]*[^[:space:]-]/ && value !~ /^(unknown|none|null|n\/a|not available|not provided|unavailable)$/
       }
       if (found) {
         endpoint = endpoint_from_message(line)
@@ -1476,7 +1483,8 @@ generate_html_report() {
       display: flex;
       flex-wrap: wrap;
       gap: 10px;
-      padding: 10px 12px;
+      padding: 14px;
+      margin: 0;
     }
     .copy-targets {
       background: var(--panel);
@@ -1494,7 +1502,14 @@ generate_html_report() {
       outline: 2px solid var(--accent);
       outline-offset: 2px;
     }
-    .copy-targets-status { font-size: 12px; }
+    details[data-affected-targets] > .copy-targets-toolbar {
+      padding: 14px;
+    }
+    .copy-targets-status {
+      font-size: 12px;
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
     .theme-toggle {
       align-items: center;
       border: 1px solid var(--line);
@@ -1668,7 +1683,7 @@ generate_html_report() {
     .finding-panel > [data-affected-targets] {
       margin: 0 16px 16px;
     }
-    .finding-panel > [data-affected-targets] > .copy-targets-toolbar {
+    .finding-panel > div[data-affected-targets] > .copy-targets-toolbar {
       padding: 0 0 12px;
     }
     .finding-panel > .finding-evidence {
@@ -1690,6 +1705,20 @@ generate_html_report() {
       font: 12px/1.45 "SFMono-Regular", Consolas, monospace;
       white-space: pre-wrap;
       word-break: break-word;
+    }
+    .finding-list .cipher-list {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+    .finding-list .cipher-list > li {
+      background: transparent;
+      border: 0;
+      border-radius: 0;
+      box-shadow: none;
+      overflow: visible;
+      padding: 2px 0;
+      overflow-wrap: anywhere;
     }
     .credential-list {
       max-height: none;

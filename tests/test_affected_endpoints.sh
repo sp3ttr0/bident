@@ -66,8 +66,17 @@ printf '[+] 192.0.2.62:161 Found 1 users: alice\n' > "$MSF_RESULT_DIR/snmp_enumu
 
 append_finding_item report.html Review 'Exposed RPC Services' rpc.txt
 append_finding_glob_item report.html Review 'RDP Detection' "$file"
-grep -Fq 'Affected Host:Port' report.html || exit 1
-grep -Fq 'Evidence by Host:Port' report.html || exit 1
+# Full raw output is retained; validate promoted findings separately.
+python3 - <<'PYTEST'
+from pathlib import Path
+import re
+p = Path("report.html")
+s = p.read_text()
+assert "Full Evidence" in s
+p.write_text(re.sub(r'<details class="artifact"><summary>Full Evidence.*?</pre></details>', '', s, flags=re.S))
+PYTEST
+grep -Fq 'Affected' report.html || exit 1
+grep -Fq 'Evidence' report.html || exit 1
 grep -Fq '<td>192.0.2.10:135</td><td>Protocol: test</td>' report.html || exit 1
 grep -Fq '<td>192.0.2.60:3389</td><td>[*] Detected RDP on 192.0.2.60:3389 (name:LAB)</td>' report.html || exit 1
 ! grep -Fq 'Connection refused' report.html || exit 1

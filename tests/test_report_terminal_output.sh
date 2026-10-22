@@ -30,7 +30,7 @@ actual="$(html_escape_file "$fixture")"
 # Both head/tail preview paths must also use the clean renderer.
 printf '\033[31mHEAD\033[0m\n%0200d\n\033[32mTAIL\033[0m\n' 0 > "${test_dir}/large.txt"
 actual="$(REPORT_EVIDENCE_MAX_BYTES=100 html_escape_file_preview "${test_dir}/large.txt")"
-[[ "$actual" == *HEAD* && "$actual" == *TAIL* && "$actual" == *truncated* ]]
+[[ "$actual" == *HEAD* && "$actual" == *TAIL* && "$actual" != *truncated* ]]
 [[ "$actual" != *$'\033'* && "$actual" != *'[31m'* && "$actual" != *'[32m'* ]]
 # Report rendering must not modify source evidence.
 grep -q $'\033' "$fixture"

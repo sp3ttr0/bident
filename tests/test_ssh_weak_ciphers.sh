@@ -38,7 +38,7 @@ printf '(enc) aes128-cbc -- [warn] weak\n' > weak.txt
 result_output_has_finding 'Weak SSH Ciphers' weak.txt
 append_ssh_weak_cipher_finding report.html
 grep -Fq '2 affected host(s)' report.html
-grep -Fq '<td>192.0.2.2:22</td><td>aes128-cbc, 3des-cbc</td>' report.html
+grep -Fq '<td>192.0.2.2:22</td><td><ul class="cipher-list"><li>aes128-cbc</li><li>3des-cbc</li></ul></td>' report.html
 grep -Fq '<td>192.0.2.3:2222</td>' report.html
 ! grep -Fq '<td>192.0.2.1:22</td>' report.html
 ! grep -Fq '<td>192.0.2.4:22</td>' report.html

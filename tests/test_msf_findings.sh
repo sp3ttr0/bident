@@ -71,7 +71,15 @@ printf '[+] 192.0.2.1\n\tPUBLIC - C:\\Public (0)\n' > "$MSF_RESULT_DIR/snmp_enum
 printf '[-] Auxiliary failed: NameError uninitialized constant Net::NTLM\n' >> "$MSF_RESULT_DIR/rdp_scanner_tcp_3389.txt"
 append_findings_summary_section positive.html
 [[ "$(grep -c '<li>' positive.html)" -eq 10 ]] || exit 1
-! grep -Fq 'NameError' positive.html || exit 1
+# Complete logs intentionally retain failures; they must not be promoted evidence.
+python3 - <<'PYTEST'
+from pathlib import Path
+import re
+s=Path('positive.html').read_text()
+assert 'NameError' in s
+promoted=re.sub(r'<details class="artifact"><summary>Full Evidence.*?</pre></details>', '', s, flags=re.S)
+assert 'NameError' not in promoted
+PYTEST
 append_msf_failed_artifacts mixed-failed.html
 grep -Fq 'NameError' mixed-failed.html || exit 1
 

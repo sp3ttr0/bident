@@ -4,6 +4,14 @@ ssh_weak_cipher_rows() {
   local file="$1" default_endpoint="${2:-}"
   awk -v endpoint="$default_endpoint" '
     BEGIN { esc = sprintf("%c", 27) }
+    function flush(j, key) {
+      if (!failed) for (j=1; j<=count; j++) {
+        key=endpoint SUBSEP pending[j]
+        if (!seen[key]++) print endpoint "\t" pending[j]
+      }
+      for (j in pending) delete pending[j]
+      count=0; failed=0
+    }
     function set_endpoint(target, port) {
       gsub(/\\/, "", target)
       if (target ~ /^\[[^]]+\]:[0-9]+$/ || target ~ /^[^:]+:[0-9]+$/) return target
@@ -13,8 +21,9 @@ ssh_weak_cipher_rows() {
     {
       gsub(esc "\\[[0-?]*[ -/]*[@-~]", "")
       gsub(/\[[0-9;]*m/, "")
-      if ($0 ~ /^===== /) { endpoint = ""; cipher = ""; next }
+      if ($0 ~ /^===== /) { flush(); endpoint = ""; cipher = ""; next }
       if ($0 ~ /^Command:/) {
+        flush()
         endpoint = ""; cipher = ""; target = ""; port = "22"; command_seen = 0
         for (i = 2; i <= NF; i++) {
           if ($i ~ /(^|\/)ssh-audit$/) { command_seen = 1; continue }
@@ -26,13 +35,14 @@ ssh_weak_cipher_rows() {
         if (command_seen && target != "" && port ~ /^[0-9]+$/ && port > 0 && port <= 65535) endpoint = set_endpoint(target, port)
         next
       }
+      if (tolower($0) ~ /connection refused|connection reset|no route to host|timed out|unable to connect|error:|traceback/) failed=1
       if ($0 ~ /^\(enc\)[[:space:]]+/) cipher = $2
       else if ($0 ~ /^\(/ || $0 ~ /^#/) cipher = ""
       if (endpoint != "" && cipher != "" && $0 ~ /\[(fail|warn)\]/) {
-        key = endpoint SUBSEP cipher
-        if (!seen[key]++) print endpoint "\t" cipher
+        pending[++count] = cipher
       }
     }
+    END {flush()}
   ' "$file"
 }
 

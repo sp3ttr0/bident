@@ -94,8 +94,10 @@ function expiry_time(s, a, n, t, stamp, year, month, day, hh, mm, ss, days, leap
   if (kind == "nse" && line ~ /^Nmap scan report for /) {
     flush(); n = split(line, a, /[[:space:]]+/); host = a[n]; gsub(/[()]/, "", host); next
   }
-  if (kind == "nse" && line ~ /^[0-9]+\/tcp[[:space:]]+open[[:space:]]/) {
-    flush(); port = line; sub(/\/.*/, "", port)
+  if (kind == "nse" && line ~ /^[0-9]+\/(tcp|udp)[[:space:]]/) {
+    flush()
+    if (line !~ /^[0-9]+\/tcp[[:space:]]+open[[:space:]]/) next
+    port = line; sub(/\/.*/, "", port)
     endpoint = (host ~ /:/ ? "[" host "]" : host) ":" port
     next
   }
@@ -115,7 +117,7 @@ function expiry_time(s, a, n, t, stamp, year, month, day, hh, mm, ss, days, leap
   # Strip NSE tree decoration only after preserving the source line number.
   sub(/^\|[_ ]*/, "", line)
   lower = tolower(trim(line))
-  if (lower ~ /^bident tls result: incomplete/) fatal = 1
+  if (lower ~ /^bident tls result: incomplete/ || (kind == "nse" && lower ~ /error:.*(script execution failed|timed out|timeout)/)) fatal = 1
   if (lower ~ /^(fatal|error|warning:.*(connect|socket))|connection refused|unable to connect|could not connect|connection failed|no route to host|scan aborted|no ssl\/tls support|nse:.*(timed out|timeout)/) fatal = 1
   if (lower ~ /timed out|timeout|handshake failed|could not test|cannot test|unable to test|test.*inconclusive|test.*unavailable/) tls13_uncertain = 1
   if (lower ~ /ssl certificate chain|certificate chain:/) chain = 1
@@ -132,9 +134,10 @@ function expiry_time(s, a, n, t, stamp, year, month, day, hh, mm, ss, days, leap
       if (id == 11 && rest ~ /^(disabled|not offered)([[:space:]]|$)/ && rest !~ /likely|unknown|unable|cannot|could not|client|openssl|failed|plaintext|downgrad|error|inconclusive/) record(5, original)
     }
     # sslscan enumerates accepted/preferred suites; rejected suites are not findings.
-    if (lower ~ /^(accepted|preferred)[[:space:]]+/) {
-      working = 1
+    if (lower ~ /^(accepted|preferred)[[:space:]]+/ && lower !~ /not accepted|rejected|not offered|failed|unknown/) {
       split(lower, accepted, /[[:space:]]+/)
+      if (!protocol_id(accepted[2])) next
+      working = 1
       if (protocol_id(accepted[2]) == 11) record(11, original)
       suite = ""
       split(trim(line), suite_fields, /[[:space:]]+/)

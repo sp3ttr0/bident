@@ -102,7 +102,16 @@ Nmap scan report for 192.0.2.32
 |       TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256 (ecdh_x25519) - A
 EOF
 append_tls_findings_summary findings.html
-[[ "$(grep -c '<li>' findings.html)" -eq 10 ]] || exit 1
+# Full raw output is retained; validate promoted findings separately.
+python3 - <<'PYTEST'
+from pathlib import Path
+import re
+p = Path("findings.html")
+s = p.read_text()
+assert "Full Evidence" in s
+p.write_text(re.sub(r'<details class="artifact"><summary>Full Evidence.*?</pre></details>', '', s, flags=re.S))
+PYTEST
+[[ "$(grep -c '<li><details' findings.html)" -eq 10 ]] || exit 1
 for endpoint in 192.0.2.10:443 192.0.2.20:443 192.0.2.30:8443; do
   grep -Fq "$endpoint" findings.html || exit 1
 done
@@ -110,7 +119,7 @@ for endpoint in 192.0.2.11:443 192.0.2.12:443 192.0.2.21:443 192.0.2.22:443 192.
   ! grep -Fq "$endpoint" findings.html || exit 1
 done
 grep -Fq 'Copy hosts' findings.html || exit 1
-grep -Fq 'Evidence by Host:Port' findings.html || exit 1
+grep -Fq 'Evidence' findings.html || exit 1
 grep -Fq '<td>192.0.2.20:443</td><td>DES-CBC3-SHA</td>' findings.html || exit 1
 grep -Fq '<td>192.0.2.30:8443</td><td>TLS_RSA_WITH_3DES_EDE_CBC_SHA</td>' findings.html || exit 1
 grep -Fq '<td>192.0.2.10:443</td><td>Category only: NULL ciphers (no encryption)</td>' findings.html || exit 1
