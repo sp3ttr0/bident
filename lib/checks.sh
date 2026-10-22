@@ -408,8 +408,8 @@ run_ssl_checks() {
     run_ssl_external_checks
   else
     printf '%sSSL/TLS Mode:%s Neither testssl nor sslscan found; using NSE fallback.\n' "$CLR_YELLOW" "$CLR_RESET"
-    run_if_open "SSL/TLS NSE" tcp "443,465,636,993,995,3269,8443" \
-      nmap -d -n -sV "-${TIMING}" --script-timeout "$SCRIPT_TIMEOUT" --min-rate "$NSE_MIN_RATE" --script 'ssl-* and not dos' -p 443,465,636,993,995,3269,8443 -oN "${NSE_DIR}/ssl_tls_results.txt" -iL "$(open_targets_file_for_ports tcp 443,465,636,993,995,3269,8443 ssl_tls)" --open
+    run_if_open "SSL/TLS NSE" tcp "443,8443" \
+      nmap -d -n -sV "-${TIMING}" --script-timeout "$SCRIPT_TIMEOUT" --min-rate "$NSE_MIN_RATE" --script 'ssl-* and not dos' -p 443,8443 -oN "${NSE_DIR}/ssl_tls_results.txt" -iL "$(open_targets_file_for_ports tcp 443,8443 ssl_tls)" --open
   fi
 }
 
@@ -446,7 +446,7 @@ run_ssl_external_checks() {
     [[ -n "${target:-}" ]] || continue
     found=true
     ssl_targets+=("${target}:${port}")
-  done < <(open_target_ports tcp 443 465 636 993 995 3269 8443)
+  done < <(open_target_ports tcp 443 8443)
 
   if [[ "$found" == false ]]; then
     [[ ! -e ${TOOL_DIR}/testssl_results.txt || -s ${TOOL_DIR}/testssl_results.txt ]] || rm -f ${TOOL_DIR}/testssl_results.txt

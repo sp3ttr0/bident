@@ -159,7 +159,7 @@ TLS checks run testssl first as the primary assessment and sslscan next as a
 cross-check when installed. If only one is installed, Bident uses that tool.
 The SSL/TLS NSE group runs only when neither external tool is available; an
 external tool error does not trigger an automatic NSE retry. The target ports
-are 443, 465, 636, 993, 995, 3269, and 8443.
+are 443 and 8443.
 
 The SSL/TLS stage runs after the other NSE checks, before Metasploit. Each
 external TLS tool has a fixed 30-minute limit per IP:port, independent of
