@@ -2108,8 +2108,9 @@ HTML
         printf '    <details class="port-card" name="open-port">\n' >> "$report_file"
         printf '      <summary class="port-summary"><span class="port-title"><span class="port-chevron" aria-hidden="true">›</span><strong>%s</strong></span><span class="badge">%s</span></summary>\n' \
           "$(html_escape_text "$display_label")" "$(html_escape_text "$proto")" >> "$report_file"
-        printf '      <details class="artifact target-panel">\n' >> "$report_file"
+        printf '      <details class="artifact target-panel" data-affected-targets>\n' >> "$report_file"
         printf '      <summary>Hosts</summary>\n' >> "$report_file"
+        print_copy_targets_button >> "$report_file"
         printf '      <pre class="targets">' >> "$report_file"
       fi
       printf '%s:%s\n' "$(html_escape_text "$target")" "$(html_escape_text "$port")" >> "$report_file"
