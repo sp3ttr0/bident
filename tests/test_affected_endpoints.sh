@@ -75,7 +75,8 @@ s = p.read_text()
 assert "Full Evidence" in s
 p.write_text(re.sub(r'<details class="artifact"><summary>Full Evidence.*?</pre></details>', '', s, flags=re.S))
 PYTEST
-grep -Fq 'Affected' report.html || exit 1
+grep -Fq '<div data-affected-targets>' report.html || exit 1
+! grep -Fq '<summary>Affected' report.html || exit 1
 grep -Fq 'Evidence' report.html || exit 1
 grep -Fq '<td>192.0.2.10:135</td><td>Protocol: test</td>' report.html || exit 1
 grep -Fq '<td>192.0.2.60:3389</td><td>[*] Detected RDP on 192.0.2.60:3389 (name:LAB)</td>' report.html || exit 1

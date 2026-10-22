@@ -33,7 +33,7 @@ function flush(i) {
   for (i in certs) delete certs[i]
   for (i in details) delete details[i]
   for (i in certificate_valid) delete certificate_valid[i]
-  count = 0; fatal = 0; working = 0; endpoint = ""; proto = 0; proto_heading = ""; script = ""; chain = 0
+  count = 0; cipher_section = 0; fatal = 0; working = 0; endpoint = ""; proto = 0; proto_heading = ""; script = ""; chain = 0
   tls13_uncertain = 0; leaf_seen = 0; certificate_id = 0
 }
 function protocol_id(s) {
@@ -47,7 +47,7 @@ function protocol_id(s) {
   return 0
 }
 function weak_cipher(s) {
-  return s ~ /(^|[^a-z])(rc4|rc2|3des|des-cbc3|des-cbc|des-cbc-sha|idea|null|export|adh-|aecd[h]?[-_])|_with_(des|3des|rc4|rc2|null|idea)|_anon_/
+  return s ~ /_cbc_|-cbc|(^|-)(aes|camellia|aria)(128|256)-sha(256|384)?$/ || s ~ /(^|[^a-z])(rc4|rc2|3des|des-cbc3|des-cbc|des-cbc-sha|idea|null|export|adh-|aecd[h]?[-_])|_with_(des|3des|rc4|rc2|null|idea)|_anon_/
 }
 function expiry_time(s, a, n, t, stamp, year, month, day, hh, mm, ss, days, leap) {
   sub(/^.*not valid after:[[:space:]]*/, "", s)
@@ -143,6 +143,22 @@ function expiry_time(s, a, n, t, stamp, year, month, day, hh, mm, ss, days, leap
       split(trim(line), suite_fields, /[[:space:]]+/)
       for (field in suite_fields) if (tolower(suite_fields[field]) == "bits") suite = suite_fields[field + 1]
       if (suite != "" && weak_cipher(tolower(suite))) record(6, original, suite)
+    }
+    # Only successful remote enumeration tables establish individual suites.
+    # Local cipher catalogues and client simulation tables are not observations.
+    if (kind == "testssl") {
+      if (lower ~ /^testing .*ciphers.*against the server/) cipher_section = 1
+      else if (lower ~ /^(testing |running |done )/) cipher_section = 0
+      if (cipher_section && lower ~ /^(0x|x)[0-9a-f,]+[[:space:]]/ && lower !~ /not offered|rejected|failed|not accepted/) {
+        cipher_field_count=split(trim(line), cipher_fields, /[[:space:]]+/)
+        suite=""; fallback_suite=""
+        for (field=2; field<=cipher_field_count; field++) {
+          if (cipher_fields[field] ~ /^(TLS|SSL)_[A-Z0-9_]+$/) suite=cipher_fields[field]
+          if (field == 2) fallback_suite=cipher_fields[field]
+        }
+        if (suite == "") suite=fallback_suite
+        if (suite != "" && weak_cipher(tolower(suite))) record(6, original, suite)
+      }
     }
     # testssl category rows must affirm that a weak suite/category was offered.
     if (kind == "testssl" && lower ~ /^(null ciphers|anonymous null ciphers|export ciphers|low:|triple des ciphers|obsolete[d]? .*ciphers|rc4)/ && lower ~ /[[:space:]]offered([^a-z]|$)/ && lower !~ /not offered|not vulnerable|unknown|could not|cannot|failed/) {

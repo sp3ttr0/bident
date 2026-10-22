@@ -52,4 +52,50 @@ assert_count 8 <<'EOF'
 | hash: abc123def456
 EOF
 
+# Explicit NSE credential pairs must work for every username, without a list
+# of privileged/common names. Failed attempts and bare pairs stay excluded.
+assert_count 11 <<'EOFPAIRS'
+| root:root - Valid credentials
+| netadmin:netadmin - Valid credentials
+| guest:guest - Valid credentials
+| user:user - Valid credentials
+| web:web - Valid credentials
+| sysadmin:sysadmin - Valid credentials
+| administrator:administrator - Valid credentials
+| webadmin:webadmin - Valid credentials
+| admin:admin - Valid credentials
+|_ test:test - Valid credentials
+| custom-account:custom-password - Valid credentials
+EOFPAIRS
+assert_count 0 <<'EOFNEGATIVE'
+| root:root
+| root:root - Invalid credentials
+| guest:guest - No valid credentials
+| root:root - Valid credentials not found
+Example: root:root - Valid credentials
+Command: root:root - Valid credentials
+| root:[redacted] - Valid credentials
+EOFNEGATIVE
+fixture="$(mktemp "${TMPDIR:-/tmp}/bident-valid-pairs.XXXXXX")"
+printf 'Nmap scan report for 192.0.2.10\n21/tcp open ftp\n' > "$fixture"
+for name in root netadmin guest user web sysadmin administrator webadmin admin test; do
+  printf '| %s:%s - Valid credentials\n' "$name" "$name" >> "$fixture"
+  [[ "$(credential_display_value "| $name:$name - Valid credentials")" == "$name:$name - Valid credentials" ]] || exit 1
+done
+credential_candidate_lines "$fixture" > "${fixture}.rows"
+[[ "$(awk -F '\034' '$4 == "192.0.2.10:21" {n++} END {print n+0}' "${fixture}.rows")" == 10 ]] || exit 1
+assert_count 0 <<'EOFBOUNDARY'
+[-] username: admin
+[-] 192.0.2.1:21 - root:root - Valid credentials
+| username: admin - Not valid credentials
+| root:******** - Valid credentials
+| http-title: Login Successful
+| banner: Authentication Successful
+resource (test.rc)> set USERNAME login successful
+Command: echo root:root - Valid credentials
+EOFBOUNDARY
+assert_count 2 <<'EOFSUCCESS'
+[+] 192.0.2.10:21 - root:root - Valid credentials
+[+] 192.0.2.11:161 - Login Successful: public
+EOFSUCCESS
 printf 'Credential extraction checks passed.\n'

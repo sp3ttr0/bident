@@ -192,6 +192,25 @@ append_core_artifact_group() {
   rm -f "$temp_file"
 }
 
+append_msf_output_artifacts() {
+  local outfile="$1" result_file count=0
+  printf '<details class="artifact artifact-group"><summary>Metasploit Results</summary>\n' >> "$outfile"
+  for result_file in "${MSF_RESULT_DIR}"/*.txt; do
+    [[ -s "$result_file" ]] || continue
+    append_result_file_section "$outfile" "$result_file"
+    count=$((count + 1))
+  done
+  if [[ "$count" -eq 0 ]]; then
+    printf '<div class="empty">No per-module result files were saved. Review the console log for execution or spool errors.</div>\n' >> "$outfile"
+  fi
+  if [[ -s "${MSF_DIR}/msfconsole.log" ]]; then
+    append_result_file_section "$outfile" "${MSF_DIR}/msfconsole.log" 'Full Metasploit Console Output'
+  else
+    printf '<div class="empty">No Metasploit console output was saved.</div>\n' >> "$outfile"
+  fi
+  printf '</details>\n' >> "$outfile"
+}
+
 append_msf_result_files() {
   local outfile="$1"
   local proto="$2"
@@ -574,15 +593,14 @@ print_copy_targets_button() {
 }
 
 append_affected_endpoint_list() {
-  local endpoints="$1" target target_count
-  target_count="$(printf '%s\n' "$endpoints" | awk 'NF {count++} END {print count + 0}')"
-  printf '      <details class="artifact target-panel" data-affected-targets open><summary>Affected (%s)</summary>' "$target_count"
+  local endpoints="$1" target
+  printf '      <div data-affected-targets>\n'
   print_copy_targets_button
-  printf '<pre class="targets">'
+  printf '<div class="service-table-wrap"><table class="service-table"><thead><tr><th>Host:Port</th></tr></thead><tbody>\n'
   while IFS= read -r target; do
-    [[ -n "$target" ]] && printf '%s\n' "$(html_escape_text "$target")"
+    [[ -n "$target" ]] && printf '<tr><td>%s</td></tr>\n' "$(html_escape_text "$target")"
   done <<< "$endpoints"
-  printf '</pre></details>\n'
+  printf '</tbody></table></div></div>\n'
 }
 
 append_tls_cipher_table() {
@@ -591,9 +609,10 @@ append_tls_cipher_table() {
   print_copy_targets_button
   printf '      <div class="service-table-wrap"><table class="service-table"><thead><tr><th>Host:Port</th><th>Weak/Deprecated Ciphers Found:</th></tr></thead><tbody>\n'
   while IFS= read -r endpoint; do
-    ciphers="$(awk -F '\034' -v host="$endpoint" '$1 == host && $2 != "" && !seen[$2]++ {value=value (value == "" ? "" : "\n") $2} END {print value}' "$rows_file")"
+    ciphers="$(awk -F '\034' -v host="$endpoint" '$1 == host && $2 != "" && $2 !~ /^Category only:/ && !seen[$2]++ {value=value (value == "" ? "" : "\n") $2} END {print value}' "$rows_file")"
     printf '        <tr><td>%s</td><td>' "$(html_escape_text "$endpoint")"
-    printf '%s\n' "$ciphers" | print_cipher_list
+    if [[ -n "$ciphers" ]]; then printf '%s\n' "$ciphers" | print_cipher_list
+    else printf '%s' 'Individual cipher names unavailable in saved output; rescan required.'; fi
     printf '</td></tr>\n' 
   done <<< "$endpoints"
   printf '      </tbody></table></div></div>\n'
@@ -640,7 +659,7 @@ append_finding_item() {
   {
     printf '    <li><details class="finding-panel">\n'
     printf '      <summary><span class="finding-severity">%s</span><div><strong>%s</strong>\n' "$(html_escape_text "$severity")" "$(html_escape_text "$title")"
-    printf '        <span>%s%s</span>\n' "$(html_escape_text "$source_file")" "$([[ "$count" -gt 0 ]] && printf ' · %s line(s)' "$count")"
+    printf '        <span>%s affected host(s)</span>\n' "$(printf '%s\n' "$endpoints" | awk 'NF {n++} END {print n+0}')"
     printf '      </div></summary>\n'
     append_affected_endpoint_list "$endpoints"
     evidence_rows="$(mktemp "${TMPDIR:-/tmp}/bident_tool_evidence.XXXXXX")"
@@ -796,7 +815,7 @@ append_finding_glob_item() {
   {
     printf '    <li><details class="finding-panel">\n'
     printf '      <summary><span class="finding-severity">%s</span><div><strong>%s</strong>\n' "$(html_escape_text "$severity")" "$(html_escape_text "$title")"
-    printf '        <span>%s file(s) · %s line(s)</span>\n' "${#files[@]}" "$count"
+    printf '        <span>%s affected host(s)</span>\n' "$(printf '%s\n' "$endpoints" | awk 'NF {n++} END {print n+0}')"
     printf '      </div></summary>\n'
     append_affected_endpoint_list "$endpoints"
     evidence_rows="$(mktemp "${TMPDIR:-/tmp}/bident_msf_evidence.XXXXXX")"
@@ -828,14 +847,21 @@ credential_candidate_lines() {
     }
     function is_credential_line(value, lowered, field, token) {
       lowered = tolower(value)
+      if (lowered ~ /^\[-\]/) return 0
       sub(/^\|[_ ]*[[:space:]]*/, "", lowered)
       sub(/^\[[+*!-]\][[:space:]]*/, "", lowered)
+      sub(/^([0-9.]+|\[[0-9a-f:]+\]):[0-9]+[[:space:]]+(-[[:space:]]+)?/, "", lowered)
+      sub(/^[0-9]+[.][0-9]+[.][0-9]+[.][0-9]+[[:space:]]+(-[[:space:]]+)?/, "", lowered)
       # Rejected attempts and diagnostic/help text are not discoveries.
       if (lowered ~ /^(error|warning|usage|example|command|debug|failed|invalid|testing|trying|attempting)([[:space:]:]|$)/ ||
           lowered ~ /(login|authentication|access)[[:space:]]+(failed|failure|denied|disabled|not allowed)/ ||
           lowered ~ /(invalid|incorrect|rejected)[[:space:]]+(credentials|password)|credentials[[:space:]]+(invalid|rejected|not found)/ ||
-          lowered ~ /no[[:space:]]+(valid[[:space:]]+)?credentials/ ||
+          lowered ~ /(no|not)[[:space:]]+(valid[[:space:]]+)?credentials/ ||
           lowered ~ /status_logon_failure|nt_status_logon_failure/) return 0
+
+      # NSE brute scripts report successful pairs without a username label.
+      # Accept the explicit success suffix, never an unlabelled wordlist pair.
+      if (lowered ~ /^[^[:space:]:<>=]+:[^[:space:]].*[[:space:]]+-[[:space:]]+valid credentials[.!]?[[:space:]]*$/ && lowered !~ /:.*(<unknown>|\[redacted\]|[*][*][*])/) return 1
 
       # Require an actual field, rather than a URL parameter, script name,
       # NTLM domain metadata, or a mention of credential terminology.
@@ -848,7 +874,8 @@ credential_candidate_lines() {
         if (token == "" || token ~ /^(none|null|nil|n\/a|unknown|redacted|disabled|required|not|false|true|\*+|x{4,}|<[^>]*>|\[[^]]*\])$/) return 0
         return 1
       }
-      if (lowered ~ /(anonymous[[:space:]_-]*(login|access|ftp).*(allowed|enabled|successful)|valid[[:space:]_-]+credentials[[:space:]]*[:=]|login successful|authentication successful|empty[[:space:]_-]+password.*(allowed|enabled|found)|default[[:space:]_-]+credentials.*(found|valid|accepted))/) return 1
+      if (lowered ~ /^(ftp-anon:[[:space:]]*)?anonymous[[:space:]_-]*(login|access|ftp).*(allowed|enabled|successful)/ ||
+          lowered ~ /^(valid[[:space:]_-]+credentials[[:space:]]*[:=]|login successful[[:space:]:]|authentication successful([[:space:]:]|$)|empty[[:space:]_-]+password.*(allowed|enabled|found)|default[[:space:]_-]+credentials.*(found|valid|accepted))/) return 1
       return 0
     }
     {
@@ -859,12 +886,15 @@ credential_candidate_lines() {
       if (line ~ /^Nmap scan report for /) {
         host = $NF; gsub(/[()]/, "", host); port = ""; in_mysql_users = 0; next
       }
-      if (line ~ /^[0-9]+\/(tcp|udp)[[:space:]]+open[[:space:]]/) {
-        port = $1; sub(/\/.*/, "", port); in_mysql_users = 0; next
+      if (line ~ /^[0-9]+\/(tcp|udp)[[:space:]]/) {
+        port = ""; in_mysql_users = 0
+        if (line ~ /^[0-9]+\/(tcp|udp)[[:space:]]+open[[:space:]]/) {port = $1; sub(/\/.*/, "", port)}
+        next
       }
       if (line ~ /^Host script results:/) { port = ""; in_mysql_users = 0; next }
       if (line ~ /^===== / || line ~ /^Command:/ || line ~ /^#/ || line ~ /^resource[[:space:](]/) {
         host = ""; port = ""; in_mysql_users = 0
+        next
       }
       # A result-line endpoint overrides any context. Never use IPs found
       # inside passwords, URLs, command echoes, or stack traces.
@@ -891,7 +921,7 @@ credential_candidate_lines() {
           username = line
           sub(/^\|[_ ]?[[:space:]]+/, "", username)
           username = trim(username)
-          print NR "\034" username "\034username: " username "\034" found_endpoint
+          print NR "\034" line "\034username: " username "\034" found_endpoint
           if (line ~ /^\|_/) in_mysql_users = 0
           next
         }
@@ -1026,6 +1056,7 @@ credential_display_value() {
       sub(/^\|[_ ]*[[:space:]]*/, "", line)
       sub(/^\[[+*!-]\][[:space:]]*/, "", line)
       lower = tolower(line)
+      if (lower ~ /^[^[:space:]:<>=]+:[^[:space:]].*[[:space:]]+-[[:space:]]+valid credentials[.!]?[[:space:]]*$/) {print line; next}
       if (lower ~ /^(user(name)?|login|account|acct|password|passwd|pwd|credential|credentials|hash|secret|token)[[:space:]]*[:=]/) {
         label = lower; sub(/[:=].*$/, "", label); sub(/[[:space:]]+$/, "", label)
         value = line; sub(/^[^:=]*[:=][[:space:]]*/, "", value)
@@ -1969,6 +2000,12 @@ generate_html_report() {
       font-weight: 600;
       margin-left: 8px;
     }
+    .port-host-list {
+      margin: 14px 16px;
+    }
+    .port-host-list > .copy-targets-toolbar {
+      padding: 0 0 12px;
+    }
     .port-card > .artifact {
       margin: 14px 16px;
       border: 1px solid var(--line);
@@ -2125,7 +2162,7 @@ HTML
       if [[ "$key" != "$previous_key" ]]; then
         if [[ "$first_group" == false ]]; then
           printf '      </pre>\n' >> "$report_file"
-          printf '      </details>\n' >> "$report_file"
+          printf '      </div>\n' >> "$report_file"
           append_port_result_files "$report_file" "$previous_proto" "$previous_port"
           printf '    </details>\n' >> "$report_file"
         fi
@@ -2137,8 +2174,7 @@ HTML
         printf '    <details class="port-card" name="open-port">\n' >> "$report_file"
         printf '      <summary class="port-summary"><span class="port-title"><span class="port-chevron" aria-hidden="true">›</span><strong>%s</strong></span><span class="badge">%s</span></summary>\n' \
           "$(html_escape_text "$display_label")" "$(html_escape_text "$proto")" >> "$report_file"
-        printf '      <details class="artifact target-panel" data-affected-targets>\n' >> "$report_file"
-        printf '      <summary>Hosts</summary>\n' >> "$report_file"
+        printf '      <div class="port-host-list" data-affected-targets>\n' >> "$report_file"
         print_copy_targets_button >> "$report_file"
         printf '      <pre class="targets">' >> "$report_file"
       fi
@@ -2147,7 +2183,7 @@ HTML
 
     if [[ "$first_group" == false ]]; then
       printf '      </pre>\n' >> "$report_file"
-      printf '      </details>\n' >> "$report_file"
+      printf '      </div>\n' >> "$report_file"
       append_port_result_files "$report_file" "$previous_proto" "$previous_port"
       printf '    </details>\n' >> "$report_file"
     fi
@@ -2182,10 +2218,10 @@ HTML
   append_core_artifact_group "$report_file" "External Tool Results" \
     "${TOOL_DIR}"/*.txt
   if [[ "${NO_MSF:-false}" != true ]]; then
-    append_core_artifact_group "$report_file" "Metasploit Results" \
+    append_msf_output_artifacts "$report_file"
+    append_core_artifact_group "$report_file" "Metasploit Command Files" \
       "${MSF_DIR}/metasploit_auxiliary.rc" \
-      "${MSF_DIR}"/metasploit_auxiliary_*.rc \
-      "${MSF_DIR}/msfconsole.log"
+      "${MSF_DIR}"/metasploit_auxiliary_*.rc
   fi
   {
     printf '  </details>\n'

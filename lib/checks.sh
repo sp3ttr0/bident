@@ -373,7 +373,9 @@ run_dns_dig_checks() {
 run_tls_target() {
   local outfile="$1" tool="$2" entry="$3" runner="" status rc=0
   mkdir -p "$LOG_DIR"
-  append_command_header "$outfile" "$tool" "$entry"
+  local tool_args=("$tool")
+  if [[ "$tool" == testssl ]]; then tool_args=("$tool" --wide --mapping iana); fi
+  append_command_header "$outfile" "${tool_args[@]}" "$entry"
   if command_available timeout; then runner="$(command -v timeout)"
   elif command_available gtimeout; then runner="$(command -v gtimeout)"
   fi
@@ -382,7 +384,7 @@ run_tls_target() {
     rc=125
     printf '%sInstall GNU coreutils (timeout/gtimeout) to run bounded TLS checks.%s\n' "$CLR_YELLOW" "$CLR_RESET"
   else
-    run_unprivileged "$runner" --kill-after=10s "${TLS_TIMEOUT}s" "$tool" "$entry" >> "$outfile" 2>&1 || rc=$?
+    run_unprivileged "$runner" --kill-after=10s "${TLS_TIMEOUT}s" "${tool_args[@]}" "$entry" >> "$outfile" 2>&1 || rc=$?
   fi
   if [[ -z "${status:-}" ]]; then
     case "$rc" in

@@ -99,4 +99,15 @@ generate_html_report
 core_line="$(grep -n '<summary>Core Artifacts</summary>' report.html | cut -d: -f1)"
 failed_line="$(grep -n '<summary>Metasploit Failed / Incomplete Checks</summary>' report.html | cut -d: -f1)"
 [[ "$failed_line" -gt "$core_line" ]] || exit 1
+# Core Artifacts embeds actual module output and console output, including
+# modules that have no positive finding. Command scripts are separate.
+printf '\033[31mConsole execution detail\033[0m\n' > "$MSF_DIR/msfconsole.log"
+append_msf_output_artifacts actual-output.html
+grep -Fq 'Full Metasploit Console Output' actual-output.html || exit 1
+grep -Fq '<pre>Console execution detail' actual-output.html || exit 1
+grep -Fq 'does not appear vulnerable to MS17-010' actual-output.html || exit 1
+! grep -Fq $'\033' actual-output.html || exit 1
+MSF_RESULT_DIR=missing-results append_msf_output_artifacts missing-output.html
+grep -Fq 'No per-module result files were saved' missing-output.html || exit 1
+grep -Fq 'Console execution detail' missing-output.html || exit 1
 printf 'Metasploit finding checks passed.\n'

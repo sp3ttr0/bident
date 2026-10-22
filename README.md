@@ -266,3 +266,11 @@ The owner and contributors of this script are not responsible or liable for ille
 ## License
 
 Add your preferred license before publishing the repository.
+
+Weak SSL/TLS cipher tables list observed individual cipher names on separate
+lines per Host:Port, including deprecated CBC suites. testssl runs use
+`--wide --mapping iana` to retain IANA suite names in remote enumeration output.
+Only successful remote cipher rows are parsed; local catalogues, client
+simulations, rejected suites, and incomplete runs do not establish affected
+cipher names. Category-only historical logs show that individual names are
+unavailable and require a rescan; no names are inferred from category labels.

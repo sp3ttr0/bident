@@ -35,7 +35,7 @@ TLS_TIMEOUT=5
 export TLS_TEST_TIMEOUT_STATUS=124
 run_tls_target "$TOOL_DIR/testssl_results.txt" testssl 192.0.2.1:443 > notice.txt
 grep -Fq 'per-target timeout (5s)' notice.txt || exit 1
-grep -Fq 'timeout --kill-after=10s 5s testssl 192.0.2.1:443' "$TLS_TEST_CALLS" || exit 1
+grep -Fq 'timeout --kill-after=10s 5s testssl --wide --mapping iana 192.0.2.1:443' "$TLS_TEST_CALLS" || exit 1
 grep -Fq 'Bident TLS result: Incomplete:' "$TOOL_DIR/testssl_results.txt" || exit 1
 [[ -z "$(awk -v kind=testssl -v now_utc=20261021000000 -f "$BIDENT_ROOT/lib/tls_findings.awk" "$TOOL_DIR/testssl_results.txt")" ]] || { printf "Assertion failed at line %s\n" "$LINENO" >&2; exit 1; }
 export TLS_TEST_TIMEOUT_STATUS=0

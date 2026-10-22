@@ -27,6 +27,7 @@ has_open_port() {
         /Ports: / {
           ports = $0
           sub(/^.*Ports: /, "", ports)
+          sub(/\t.*/, "", ports)
           count = split(ports, entries, ", ")
           for (i = 1; i <= count; i++) {
             split(entries[i], fields, "/")
@@ -60,6 +61,7 @@ has_any_open_port() {
       /Ports: / {
         ports = $0
         sub(/^.*Ports: /, "", ports)
+          sub(/\t.*/, "", ports)
         count = split(ports, entries, ", ")
         for (i = 1; i <= count; i++) {
           split(entries[i], fields, "/")
@@ -118,6 +120,7 @@ open_target_ports() {
         target = $2
         ports = $0
         sub(/^.*Ports: /, "", ports)
+          sub(/\t.*/, "", ports)
         count = split(ports, entries, ", ")
         for (i = 1; i <= count; i++) {
           split(entries[i], fields, "/")
@@ -173,6 +176,7 @@ all_open_target_ports() {
         target = $2
         ports = $0
         sub(/^.*Ports: /, "", ports)
+          sub(/\t.*/, "", ports)
         count = split(ports, entries, ", ")
         for (i = 1; i <= count; i++) {
           split(entries[i], fields, "/")
@@ -205,6 +209,7 @@ generate_services_report() {
           target = $2
           ports = $0
           sub(/^.*Ports: /, "", ports)
+          sub(/\t.*/, "", ports)
           count = split(ports, entries, ", ")
           for (i = 1; i <= count; i++) {
             field_count = split(entries[i], fields, "/")

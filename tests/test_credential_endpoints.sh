@@ -39,4 +39,32 @@ grep -Fq 'data-verified="false">Not identified' report.html || exit 1
 grep -Fq 'password: spaces &amp; &lt;symbols&gt;!' report.html || exit 1
 ! grep -Fq '192.0.2.13:161' report.html || exit 1
 ! grep -Fq 'user=wrong' report.html || exit 1
+cat > boundaries.txt <<'EOFBOUNDARIES'
+Nmap scan report for 192.0.2.20
+21/tcp open ftp
+| root:root - Valid credentials
+22/tcp closed ssh
+| guest:guest - Valid credentials
+Nmap scan report for 192.0.2.21
+3306/tcp open mysql
+| mysql-users:
+|_  root
+Host script results:
+| username: host-only
+Command: echo root:root - Valid credentials
+resource (test.rc)> set USERNAME login successful
+EOFBOUNDARIES
+credential_candidate_lines boundaries.txt > boundaries.rows
+python3 - <<'PYTEST'
+from pathlib import Path
+source=Path('boundaries.txt').read_text().splitlines()
+rows=[row.split('\x1c') for row in Path('boundaries.rows').read_text().strip('\n').split('\n')]
+assert len(rows)==4
+for nr,evidence,value,endpoint in rows:
+    assert source[int(nr)-1].strip()==evidence
+assert rows[0][3]=='192.0.2.20:21'
+assert rows[1][3]==''  # Closed port cannot inherit the previous port.
+assert rows[2][2:] == ['username: root','192.0.2.21:3306']
+assert rows[3][3]==''  # A host script supplies no service port.
+PYTEST
 printf 'Credential endpoint checks passed.\n'
