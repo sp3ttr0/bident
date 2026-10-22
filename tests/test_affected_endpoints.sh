@@ -66,7 +66,11 @@ printf '[+] 192.0.2.62:161 Found 1 users: alice\n' > "$MSF_RESULT_DIR/snmp_enumu
 
 append_finding_item report.html Review 'Exposed RPC Services' rpc.txt
 append_finding_glob_item report.html Review 'RDP Detection' "$file"
-grep -Fq 'Affected IP:Port' report.html || exit 1
+grep -Fq 'Affected Host:Port' report.html || exit 1
+grep -Fq 'Evidence by Host:Port' report.html || exit 1
+grep -Fq '<td>192.0.2.10:135</td><td>Protocol: test</td>' report.html || exit 1
+grep -Fq '<td>192.0.2.60:3389</td><td>[*] Detected RDP on 192.0.2.60:3389 (name:LAB)</td>' report.html || exit 1
+! grep -Fq 'Connection refused' report.html || exit 1
 grep -Fq '192.0.2.10:135' report.html || exit 1
 grep -Fq '192.0.2.60:3389' report.html || exit 1
 ! grep -Fq '192.0.2.61:3389' report.html || exit 1

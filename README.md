@@ -228,6 +228,13 @@ An `expired` label without a usable expiry date is insufficient. Wildcard
 certificate entries require a literal `*` in the common name or alternative
 names; an asterisk in an organization name or issuer alone does not qualify.
 
+TLS cards show **Evidence by Host:Port** tables. Weak TLS cipher entries include
+the specific accepted suite names where enumerated; category-only observations
+are explicitly marked and never expanded into assumed cipher names. Other
+supported findings, including Metasploit findings, also associate each evidence
+row with its affected endpoint and source line. Failed or unrelated target
+blocks are excluded from those tables; full raw output remains in Core Artifacts.
+
 ```text
 base_scans/              SYN, connect, and UDP Nmap base scan outputs.
 nmap_scripts/            Targeted Nmap NSE result files.

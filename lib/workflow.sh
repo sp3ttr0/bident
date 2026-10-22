@@ -252,11 +252,11 @@ main() {
   fi
   
   target_count="$(wc -l < "$TARGETS_FILE" | tr -d '[:space:]')"
-  printf '%sTotal Hosts/IPs To Scan:%s %s\n' "$CLR_GREEN" "$CLR_RESET" "$target_count"
+  printf '%sTotal Hosts To Scan:%s %s\n' "$CLR_GREEN" "$CLR_RESET" "$target_count"
   printf '%sScoped Targets File:%s %s\n' "$CLR_CYAN" "$CLR_RESET" "$TARGETS_FILE"
   
   if [[ -n "$RESUME_DIR" && -s "$LIVE_TARGETS_FILE" ]]; then
-    printf '%sResuming With Live Hosts/IPs File:%s %s\n' "$CLR_CYAN" "$CLR_RESET" "$LIVE_TARGETS_FILE"
+    printf '%sResuming With Live Hosts File:%s %s\n' "$CLR_CYAN" "$CLR_RESET" "$LIVE_TARGETS_FILE"
   else
     printf '%sDiscovering Live Hosts From:%s %s\n' "$CLR_CYAN" "$CLR_RESET" "$TARGETS_FILE"
     : > "$LIVE_TARGETS_FILE"
@@ -273,7 +273,7 @@ main() {
   fi
   
   if [[ ! -s "$LIVE_TARGETS_FILE" ]]; then
-    printf '%sNo Live Hosts/IPs Was Found.%s\n' "$CLR_YELLOW" "$CLR_RESET"
+    printf '%sNo Live Hosts Was Found.%s\n' "$CLR_YELLOW" "$CLR_RESET"
     printf '%sLive Targets File:%s %s\n' "$CLR_CYAN" "$CLR_RESET" "$LIVE_TARGETS_FILE"
     printf '%sNothing More To Scan. Exiting.%s\n' "$CLR_YELLOW" "$CLR_RESET"
     finish_scan_timing
@@ -284,9 +284,9 @@ main() {
   fi
   
   live_target_count="$(wc -l < "$LIVE_TARGETS_FILE" | tr -d '[:space:]')"
-  printf '%sTotal Live Hosts/IPs:%s %s\n' "$CLR_GREEN" "$CLR_RESET" "$live_target_count"
+  printf '%sTotal Live Hosts:%s %s\n' "$CLR_GREEN" "$CLR_RESET" "$live_target_count"
   printf '%sLive Targets File:%s %s\n' "$CLR_CYAN" "$CLR_RESET" "$LIVE_TARGETS_FILE"
-  printf '%sLive Hosts/IPs:%s\n' "$CLR_CYAN" "$CLR_RESET"
+  printf '%sLive Hosts:%s\n' "$CLR_CYAN" "$CLR_RESET"
   awk '{print "  " $0}' "$LIVE_TARGETS_FILE"
   if [[ -n "$PORT_FLAG" ]]; then
     printf '%sPort Mode:%s All Ports (-p- Enabled)\n' "$CLR_CYAN" "$CLR_RESET"

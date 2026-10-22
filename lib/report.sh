@@ -249,22 +249,43 @@ append_base_scan_port_evidence() {
   esac
 
   for source_file in "${sources[@]}"; do
-    [[ -s "$source_file" ]] || continue
-    awk -v wanted_port="$port" -v wanted_proto="$proto" -v source_file="$source_file" '
-      $0 ~ "Ports:" {
-        split($0, parts, "Ports: ")
-        split(parts[2], ports, ", ")
-        for (i in ports) {
-          split(ports[i], fields, "/")
-          if (fields[1] == wanted_port && fields[2] == "open" && fields[3] == wanted_proto) {
-            print "===== " source_file " ====="
+    local normal_file="${source_file%.gnmap}.nmap" excerpt
+    excerpt=""
+    if [[ -s "$normal_file" ]]; then
+      excerpt="$(awk -v port="$port" -v proto="$proto" '
+        /^Nmap scan report for / {host=$0; next}
+        $1 ~ /^[0-9]+\/(tcp|udp)$/ {
+          split($1, endpoint, "/")
+          if (endpoint[1] == port && endpoint[2] == proto && $2 == "open") {
+            print host
+            print "PORT     STATE SERVICE / VERSION"
             print $0
             print ""
-            break
           }
         }
-      }
-    ' "$source_file" >> "$temp_file"
+      ' "$normal_file")"
+    fi
+    if [[ -n "$excerpt" ]]; then
+      printf '===== %s =====\n%s\n\n' "$normal_file" "$excerpt" >> "$temp_file"
+    elif [[ -s "$source_file" ]]; then
+      awk -v wanted_port="$port" -v wanted_proto="$proto" -v source_file="$source_file" '
+        /Ports:/ {
+          host=$0; sub(/[[:space:]]*Ports:.*/, "", host)
+          text=$0; sub(/^.*Ports: /, "", text)
+          n=split(text, ports, ", ")
+          for (i=1; i<=n; i++) {
+            split(ports[i], fields, "/")
+            if (fields[1] == wanted_port && fields[2] == "open" && fields[3] == wanted_proto) {
+              print "===== " source_file " (formatted) ====="
+              print host
+              print "PORT     STATE SERVICE / VERSION"
+              print fields[1] "/" fields[3] "  " fields[2] "  " fields[5] "  " fields[7]
+              print ""
+            }
+          }
+        }
+      ' "$source_file" >> "$temp_file"
+    fi
   done
 
   if [[ -s "$temp_file" ]]; then
@@ -429,11 +450,10 @@ append_ssh_weak_cipher_finding() {
   target_count="$(printf '%s\n' "$rows" | awk 'END {print NR}')"
   {
     printf '    <li><details class="finding-panel">\n'
-    printf '      <summary><span class="finding-severity">Review</span><div><strong>Weak SSH Ciphers</strong><span>%s affected target(s)</span></div></summary>\n' "$target_count"
-    printf '      <p class="muted">Targets with encryption cipher warnings or failures from ssh-audit. Key-exchange, host-key, and MAC warnings alone are excluded.</p>\n'
+    printf '      <summary><span class="finding-severity">Review</span><div><strong>Weak SSH Ciphers</strong><span>%s affected host(s)</span></div></summary>\n' "$target_count"
     printf '      <div data-affected-targets>\n'
     print_copy_targets_button
-    printf '      <div class="service-table-wrap"><table class="service-table"><thead><tr><th>Target IP:Port</th><th>Weak Ciphers</th></tr></thead><tbody>\n'
+    printf '      <div class="service-table-wrap"><table class="service-table"><thead><tr><th>Host:Port</th><th>Weak Ciphers</th></tr></thead><tbody>\n'
     while IFS=$'\t' read -r target ciphers; do
       printf '        <tr><td>%s</td><td>%s</td></tr>\n' "$(html_escape_text "$target")" "$(html_escape_text "$ciphers")"
     done <<< "$rows"
@@ -478,8 +498,8 @@ verified_ip_port_lines() {
 # Extract endpoints only from the same command block as verified evidence.
 # Never promote a scope/targets file or an unrelated banner IP to a finding.
 tool_finding_endpoints() {
-  local title="$1" file="$2"
-  html_escape_stream < "$file" | awk -v title="$title" '
+  local title="$1" file="$2" mode="${3:-endpoints}"
+  html_escape_stream < "$file" | awk -v title="$title" -v mode="$mode" '
     function valid_ip(ip, parts, n, j) {
       if (ip ~ /:/) return ip ~ /^[0-9a-fA-F:]+$/ && ip ~ /:.*:/
       n = split(ip, parts, ".")
@@ -487,13 +507,19 @@ tool_finding_endpoints() {
       for (j = 1; j <= n; j++) if (parts[j] !~ /^[0-9]+$/ || (parts[j] + 0) > 255) return 0
       return 1
     }
-    function emit(ip, port, key) {
+    function emit(ip, port, single_text, single_nr, key, j) {
       if (!valid_ip(ip) || port !~ /^[0-9]+$/ || (port + 0) < 1 || (port + 0) > 65535) return
       key = (ip ~ /:/ ? "[" ip "]" : ip) ":" port
-      if (!seen[key]++) print key
+      if (mode == "rows") {
+        if (single_text != "") print key "\034" single_nr "\034" single_text
+        else for (j = 1; j <= evidence_count; j++) print key "\034" evidence_nr[j] "\034" evidence[j]
+      } else if (!seen[key]++) print key
     }
     function flush() {
       if (!error && positive && permitted) emit(host, port)
+      for (j in evidence) delete evidence[j]
+      for (j in evidence_nr) delete evidence_nr[j]
+      evidence_count = 0
       host = ""; port = ""; positive = 0; error = 0; permitted = 0; dns_answer = 0; dns_ok = 0; dns_ra = 0; handshake = 0; weak = 0
     }
     /^===== / { flush(); next }
@@ -519,43 +545,77 @@ tool_finding_endpoints() {
     }
     {
       lower = tolower($0)
+      relevant = 0
       if (lower ~ /connection refused|cannot connect|no route to host|timed out|nt_status_|invalid credentials|ldap_bind:|(^|[[:space:]])(error|failed|failure|exception)([[:space:]:]|$)/) error = 1
-      if (title == "Exposed RPC Services" && $0 ~ /^(Protocol:|Provider:)|ncacn_|^[[:space:]]*[0-9a-fA-F-]{36}/) positive = 1
-      if (title == "Unauthenticated Remote Procedure Call" && $0 ~ /Se[A-Za-z]+Privilege/) positive = 1
-      if (title == "LDAP Anonymous Bind" && $0 ~ /^(dn:|namingContexts:|defaultNamingContext:|rootDomainNamingContext:|supportedLDAPVersion:|supportedSASLMechanisms:)/) positive = 1
+      if (title == "Exposed RPC Services" && $0 ~ /^(Protocol:|Provider:)|ncacn_|^[[:space:]]*[0-9a-fA-F-]{36}/) { positive = 1; relevant = 1 }
+      if (title == "Unauthenticated Remote Procedure Call" && $0 ~ /Se[A-Za-z]+Privilege/) { positive = 1; relevant = 1 }
+      if (title == "LDAP Anonymous Bind" && $0 ~ /^(dn:|namingContexts:|defaultNamingContext:|rootDomainNamingContext:|supportedLDAPVersion:|supportedSASLMechanisms:)/) { positive = 1; relevant = 1 }
       if (title == "DNS Recursion Enabled") {
         if ($0 ~ /status: NOERROR/) dns_ok = 1
         if ($0 ~ /ANSWER: [1-9][0-9]*/) dns_answer = 1
         if ($0 ~ /flags:.*[[:space:]]rd[;[:space:]]/ && $0 ~ /flags:.*[[:space:]]ra[;[:space:]]/) dns_ra = 1
         positive = dns_ok && dns_answer && dns_ra
+        if ($0 ~ /status:|flags:/) relevant = 1
       }
       if (title == "IKE VPN Peer Weak Encryption") {
         if ($1 == host && lower ~ /handshake returned/ && lower !~ /no handshake/) handshake = 1
         if (lower ~ /sa=/ && lower ~ /(enc|hash|group).*(3des|md5|sha1|sha-1|modp768|modp1024|group[[:space:]]*[12]([^0-9]|$))/) weak = 1
         positive = handshake && weak
+        if (($1 == host && lower ~ /handshake returned/) || lower ~ /sa=/) relevant = 1
       }
+      if (relevant) { evidence[++evidence_count] = $0; evidence_nr[evidence_count] = NR }
       # NetExec identifies host and actual port on each result line. Ignore
       # the command header, which commonly contains a whole targets file.
-      if ($1 == "SMB" && ((title == "Misconfigured Server Message Block Signing" && $0 ~ /signing:False/) || (title == "SMBv1 Enabled" && $0 ~ /SMBv1:True/))) emit($2, $3)
+      if ($1 == "SMB" && ((title == "Misconfigured Server Message Block Signing" && $0 ~ /signing:False/) || (title == "SMBv1 Enabled" && $0 ~ /SMBv1:True/))) emit($2, $3, $0, NR)
     }
     END { flush() }
-  ' | verified_ip_port_lines
+  ' | if [[ "$mode" == rows ]]; then cat; else verified_ip_port_lines; fi
 }
 
 print_copy_targets_button() {
-  printf '      <div class="copy-targets-toolbar"><button type="button" class="copy-targets">Copy targets</button><span class="copy-targets-status muted" role="status" aria-live="polite"></span></div>\n'
+  printf '      <div class="copy-targets-toolbar"><button type="button" class="copy-targets">Copy hosts</button><span class="copy-targets-status muted" role="status" aria-live="polite"></span></div>\n'
 }
 
 append_affected_endpoint_list() {
   local endpoints="$1" target target_count
   target_count="$(printf '%s\n' "$endpoints" | awk 'NF {count++} END {print count + 0}')"
-  printf '      <details class="artifact target-panel" data-affected-targets open><summary>Affected IP:Port (%s)</summary>' "$target_count"
+  printf '      <details class="artifact target-panel" data-affected-targets open><summary>Affected Host:Port (%s)</summary>' "$target_count"
   print_copy_targets_button
   printf '<pre class="targets">'
   while IFS= read -r target; do
     [[ -n "$target" ]] && printf '%s\n' "$(html_escape_text "$target")"
   done <<< "$endpoints"
   printf '</pre></details>\n'
+}
+
+append_tls_cipher_table() {
+  local rows_file="$1" endpoints="$2" endpoint ciphers
+  printf '      <div data-affected-targets>\n'
+  print_copy_targets_button
+  printf '      <div class="service-table-wrap"><table class="service-table"><thead><tr><th>Host:Port</th><th>Weak Ciphers</th></tr></thead><tbody>\n'
+  while IFS= read -r endpoint; do
+    ciphers="$(awk -F '\034' -v host="$endpoint" '$1 == host && $2 != "" && !seen[$2]++ {value=value (value == "" ? "" : ", ") $2} END {print value}' "$rows_file")"
+    printf '        <tr><td>%s</td><td>%s</td></tr>\n' "$(html_escape_text "$endpoint")" "$(html_escape_text "$ciphers")"
+  done <<< "$endpoints"
+  printf '      </tbody></table></div></div>\n'
+}
+
+append_endpoint_evidence_table() {
+  local rows_file="$1" endpoints="$2" escaped="${3:-false}" cipher_column="${4:-false}"
+  local endpoint detail source evidence
+  printf '      <details class="artifact"><summary>Evidence by Host:Port</summary>\n'
+  printf '      <div class="service-table-wrap"><table class="service-table"><thead><tr><th>Host:Port</th>'
+  if [[ "$cipher_column" == true ]]; then printf '<th>Weak Cipher / Reported Category</th>'; fi
+  printf '<th>Verified Output</th><th>Source</th></tr></thead><tbody>\n'
+  while IFS=$'\034' read -r endpoint detail source evidence; do
+    printf '%s\n' "$endpoints" | grep -Fxq -- "$endpoint" || continue
+    printf '        <tr><td>%s</td>' "$(html_escape_text "$endpoint")"
+    if [[ "$cipher_column" == true ]]; then printf '<td>%s</td>' "$(html_escape_text "$detail")"; fi
+    if [[ "$escaped" == true ]]; then printf '<td>%s</td>' "$evidence"
+    else printf '<td>%s</td>' "$(html_escape_text "$evidence")"; fi
+    printf '<td>%s</td></tr>\n' "$(html_escape_text "$source")"
+  done < "$rows_file"
+  printf '      </tbody></table></div></details>\n'
 }
 
 append_finding_item() {
@@ -565,7 +625,7 @@ append_finding_item() {
   local source_file="$4"
   local detail="${5:-}"
   local count=0
-  local endpoints
+  local endpoints evidence_rows endpoint evidence_line evidence_text
 
   [[ -s "$source_file" ]] || return 0
   endpoints="$(tool_finding_endpoints "$title" "$source_file")"
@@ -576,14 +636,14 @@ append_finding_item() {
     printf '    <li><details class="finding-panel">\n'
     printf '      <summary><span class="finding-severity">%s</span><div><strong>%s</strong>\n' "$(html_escape_text "$severity")" "$(html_escape_text "$title")"
     printf '        <span>%s%s</span>\n' "$(html_escape_text "$source_file")" "$([[ "$count" -gt 0 ]] && printf ' · %s line(s)' "$count")"
-    if [[ -n "$detail" ]]; then
-      printf '        <p>%s</p>\n' "$(html_escape_text "$detail")"
-    fi
     printf '      </div></summary>\n'
     append_affected_endpoint_list "$endpoints"
-    printf '      <pre class="finding-evidence">'
-    html_escape_file_preview "$source_file"
-    printf '</pre>\n'
+    evidence_rows="$(mktemp "${TMPDIR:-/tmp}/bident_tool_evidence.XXXXXX")"
+    while IFS=$'\034' read -r endpoint evidence_line evidence_text; do
+      printf '%s\034\034%s:%s\034%s\n' "$endpoint" "$source_file" "$evidence_line" "$evidence_text" >> "$evidence_rows"
+    done < <(tool_finding_endpoints "$title" "$source_file" rows)
+    append_endpoint_evidence_table "$evidence_rows" "$endpoints" true
+    rm -f "$evidence_rows"
     printf '    </details></li>\n'
   } >> "$outfile"
 }
@@ -652,7 +712,8 @@ msf_finding_lines() {
         if (endpoint == "") next
         if (mode == "endpoints") {
           if (!seen[endpoint]++) print endpoint
-        } else print line
+        } else if (mode == "rows") print endpoint "\034" NR "\034" line
+        else print line
       }
     }
   ' | if [[ "$mode" == endpoints ]]; then verified_ip_port_lines; else cat; fi
@@ -709,7 +770,7 @@ append_finding_glob_item() {
   local source_file
   local files=()
   local count=0
-  local evidence_count endpoints="" file_endpoints
+  local evidence_count endpoints="" file_endpoints evidence_rows endpoint evidence_line evidence_text
 
   for source_file in $source_pattern; do
     [[ -s "$source_file" ]] || continue
@@ -729,18 +790,16 @@ append_finding_glob_item() {
     printf '    <li><details class="finding-panel">\n'
     printf '      <summary><span class="finding-severity">%s</span><div><strong>%s</strong>\n' "$(html_escape_text "$severity")" "$(html_escape_text "$title")"
     printf '        <span>%s file(s) · %s line(s)</span>\n' "${#files[@]}" "$count"
-    if [[ -n "$detail" ]]; then
-      printf '        <p>%s</p>\n' "$(html_escape_text "$detail")"
-    fi
     printf '      </div></summary>\n'
     append_affected_endpoint_list "$endpoints"
-    printf '      <pre class="finding-evidence">'
+    evidence_rows="$(mktemp "${TMPDIR:-/tmp}/bident_msf_evidence.XXXXXX")"
     for source_file in "${files[@]}"; do
-      printf '===== %s =====\n' "$(html_escape_text "$source_file")"
-      msf_finding_lines "$source_file"
-      printf '\n'
+      while IFS=$'\034' read -r endpoint evidence_line evidence_text; do
+        printf '%s\034\034%s:%s\034%s\n' "$endpoint" "$source_file" "$evidence_line" "$evidence_text" >> "$evidence_rows"
+      done < <(msf_finding_lines "$source_file" rows)
     done
-    printf '</pre>\n'
+    append_endpoint_evidence_table "$evidence_rows" "$endpoints" true
+    rm -f "$evidence_rows"
     printf '    </details></li>\n'
   } >> "$outfile"
 }
@@ -851,7 +910,7 @@ credential_candidate_count() {
 }
 
 append_tls_findings_summary() {
-  local outfile="$1" rows_file file kind id title detail endpoints endpoint source_line evidence known source_name
+  local outfile="$1" rows_file file kind id title detail endpoints endpoint source_line evidence known source_name cipher_detail evidence_rows
   local now_utc
   now_utc="$(date -u '+%Y%m%d%H%M%S')"
   rows_file="$(mktemp "${TMPDIR:-/tmp}/bident_tls_findings.XXXXXX")"
@@ -863,7 +922,7 @@ append_tls_findings_summary() {
     esac
     [[ -s "$file" ]] || continue
     awk -v kind="$kind" -v now_utc="$now_utc" -f "${BIDENT_ROOT}/lib/tls_findings.awk" "$file" \
-      | awk -F '\034' -v source_file="$file" 'BEGIN {OFS="\034"} {print $1,$2,source_file ":" $3,$4}' >> "$rows_file"
+      | awk -F '\034' -v source_file="$file" 'BEGIN {OFS="\034"} {print $1,$2,source_file ":" $3,$4,$5}' >> "$rows_file"
   done
   for id in 1 2 3 4 5 6 7 8 9 10; do
     case "$id" in
@@ -895,16 +954,19 @@ append_tls_findings_summary() {
     esac
     {
       printf '    <li><details class="finding-panel">\n'
-      printf '      <summary><span class="finding-severity">Review</span><div><strong>%s</strong><span>%s affected target(s)</span></div></summary>\n' "$(html_escape_text "$title")" "$(printf '%s\n' "$endpoints" | awk 'END {print NR}')"
-      printf '      <p class="muted">%s</p>\n' "$(html_escape_text "$detail")"
-      append_affected_endpoint_list "$endpoints"
-      printf '      <pre class="finding-evidence">'
-      while IFS=$'\034' read -r known endpoint source_line evidence; do
+      printf '      <summary><span class="finding-severity">Review</span><div><strong>%s</strong><span>%s affected host(s)</span></div></summary>\n' "$(html_escape_text "$title")" "$(printf '%s\n' "$endpoints" | awk 'END {print NR}')"
+      if [[ "$id" != 6 ]]; then append_affected_endpoint_list "$endpoints"; fi
+      evidence_rows="$(mktemp "${TMPDIR:-/tmp}/bident_tls_evidence.XXXXXX")"
+      while IFS=$'\034' read -r known endpoint source_line evidence cipher_detail; do
         [[ "$known" == "$id" ]] || continue
-        printf '%s\n' "$endpoints" | grep -Fxq -- "$endpoint" || continue
-        printf '%s — %s\n' "$(html_escape_text "$source_line")" "$(html_escape_text "$evidence")"
+        printf '%s\034%s\034%s\034%s\n' "$endpoint" "$cipher_detail" "$source_line" "$evidence" >> "$evidence_rows"
       done < "$rows_file"
-      printf '</pre>\n    </details></li>\n'
+      if [[ "$id" == 6 ]]; then
+        append_tls_cipher_table "$evidence_rows" "$endpoints"
+        append_endpoint_evidence_table "$evidence_rows" "$endpoints" false true
+      else append_endpoint_evidence_table "$evidence_rows" "$endpoints"; fi
+      rm -f "$evidence_rows"
+      printf '    </details></li>\n'
     } >> "$outfile"
   done
   rm -f "$rows_file"
@@ -1013,8 +1075,7 @@ append_credential_summary_section() {
   {
     printf '  <section data-credential-copy><h2>Possible Usernames / Credentials</h2>\n'
     if [[ -s "$temp_file" ]]; then
-      printf '  <p class="muted">These entries were extracted from tool output using credential-related keywords and username enumeration lists. Usernames alone do not confirm valid credentials; entries should be manually verified.</p>\n'
-      printf '  <div class="copy-targets-toolbar"><button class="copy-targets copy-credentials" type="button" data-copy-mode="entries">Copy entries with IP:Port</button><button class="copy-targets copy-credentials" type="button" data-copy-mode="targets">Copy IP:Port only</button><span class="copy-targets-status muted" role="status" aria-live="polite"></span></div>\n'
+      printf '  <div class="copy-targets-toolbar"><button class="copy-targets copy-credentials" type="button" data-copy-mode="entries">Copy entries with Host:Port</button><button class="copy-targets copy-credentials" type="button" data-copy-mode="targets">Copy Host:Port only</button><span class="copy-targets-status muted" role="status" aria-live="polite"></span></div>\n'
       printf '  <ul class="finding-list credential-list">\n'
       cat "$temp_file"
       printf '  </ul>\n'
@@ -1555,7 +1616,7 @@ generate_html_report() {
       box-shadow: var(--shadow);
       overflow: hidden;
     }
-    .finding-panel summary {
+    .finding-panel > summary {
       align-items: flex-start;
       cursor: pointer;
       display: flex;
@@ -1563,7 +1624,7 @@ generate_html_report() {
       list-style: none;
       padding: 11px 12px;
     }
-    .finding-panel summary::-webkit-details-marker {
+    .finding-panel > summary::-webkit-details-marker {
       display: none;
     }
     .finding-list strong,
@@ -1590,6 +1651,34 @@ generate_html_report() {
       padding: 2px 8px;
       text-transform: uppercase;
     }
+    .finding-panel > summary > div {
+      min-width: 0;
+      flex: 1;
+    }
+    .finding-panel > p {
+      margin: 0;
+      padding: 4px 16px 14px;
+    }
+    .finding-panel > p .credential-endpoint {
+      display: inline;
+      color: var(--text);
+      font-size: inherit;
+    }
+    .finding-panel > .artifact,
+    .finding-panel > [data-affected-targets] {
+      margin: 0 16px 16px;
+    }
+    .finding-panel > [data-affected-targets] > .copy-targets-toolbar {
+      padding: 0 0 12px;
+    }
+    .finding-panel > .finding-evidence {
+      margin: 0 16px 16px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+    }
+    [data-credential-copy] > .copy-targets-toolbar {
+      padding: 0 0 14px;
+    }
     .finding-evidence {
       border-top: 1px solid var(--line);
       margin: 0;
@@ -1603,8 +1692,8 @@ generate_html_report() {
       word-break: break-word;
     }
     .credential-list {
-      max-height: 360px;
-      overflow: auto;
+      max-height: none;
+      overflow: visible;
     }
     .host-summary-grid {
       display: grid;
@@ -1851,6 +1940,14 @@ generate_html_report() {
       font-weight: 600;
       margin-left: 8px;
     }
+    .port-card > .artifact {
+      margin: 14px 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+    .port-card .targets {
+      padding: 12px 14px;
+    }
     .target-panel, .result-panel {
       margin: 10px 16px;
     }
@@ -1942,8 +2039,8 @@ HTML
     printf '    <p>Run Time (HH:MM:SS): %s</p>\n' "$(html_escape_text "${SCAN_RUNTIME:-Unavailable}")"
     printf '  </section>\n'
     printf '  <section class="metrics">\n'
-    printf '    <div class="metric"><strong>%s</strong><span>Scoped Hosts/IPs</span></div>\n' "$scope_count"
-    printf '    <div class="metric"><strong>%s</strong><span>Live Hosts/IPs</span></div>\n' "$live_count"
+    printf '    <div class="metric"><strong>%s</strong><span>Scoped Hosts</span></div>\n' "$scope_count"
+    printf '    <div class="metric"><strong>%s</strong><span>Live Hosts</span></div>\n' "$live_count"
     printf '    <div class="metric"><strong>%s</strong><span>Total Ports Open</span></div>\n' "$open_rows"
     printf '  </section>\n'
   } > "$report_file"
@@ -1955,7 +2052,7 @@ HTML
     {
       printf '  <div class="table-tools">\n'
       printf '    <input class="service-search" id="serviceSearch" type="search" placeholder="Search services..." aria-label="Search services">\n'
-      printf '    <div class="service-filter"><label for="filterHost">Hosts/IPs</label><select id="filterHost" data-column="0"><option value="">All Hosts/IPs</option></select></div>\n'
+      printf '    <div class="service-filter"><label for="filterHost">Hosts</label><select id="filterHost" data-column="0"><option value="">All Hosts</option></select></div>\n'
       printf '    <div class="service-filter"><label for="filterPortProtocol">Port/Protocol</label><select id="filterPortProtocol" data-column="1"><option value="">All Port/Protocol</option></select></div>\n'
       printf '    <div class="service-filter"><label for="filterName">Name</label><select id="filterName" data-column="2"><option value="">All Names</option></select></div>\n'
       printf '    <div class="service-filter"><label for="filterInfo">Info</label><select id="filterInfo" data-column="3"><option value="">All Info</option></select></div>\n'
@@ -1963,11 +2060,11 @@ HTML
       printf '  <div class="service-table-wrap">\n'
       printf '    <table class="service-table" id="servicesTable">\n'
       printf '      <thead><tr>\n'
-      printf '        <th><button class="sort-button" type="button" data-column="0">Hosts/IPs</button></th>\n'
+      printf '        <th><button class="sort-button" type="button" data-column="0">Hosts</button></th>\n'
       printf '        <th><button class="sort-button" type="button" data-column="1">Port/Protocol</button></th>\n'
       printf '        <th><button class="sort-button" type="button" data-column="2">Name</button></th>\n'
       printf '        <th><button class="sort-button" type="button" data-column="3">Info</button></th>\n'
-      printf '        <th><button class="sort-button" type="button" data-column="4">Hosts/IPs:Port</button></th>\n'
+      printf '        <th><button class="sort-button" type="button" data-column="4">Host:Port</button></th>\n'
       printf '      </tr></thead>\n'
       printf '      <tbody>\n'
     } >> "$report_file"
@@ -2012,7 +2109,7 @@ HTML
         printf '      <summary class="port-summary"><span class="port-title"><span class="port-chevron" aria-hidden="true">›</span><strong>%s</strong></span><span class="badge">%s</span></summary>\n' \
           "$(html_escape_text "$display_label")" "$(html_escape_text "$proto")" >> "$report_file"
         printf '      <details class="artifact target-panel">\n' >> "$report_file"
-        printf '      <summary>Hosts/IPs</summary>\n' >> "$report_file"
+        printf '      <summary>Hosts</summary>\n' >> "$report_file"
         printf '      <pre class="targets">' >> "$report_file"
       fi
       printf '%s:%s\n' "$(html_escape_text "$target")" "$(html_escape_text "$port")" >> "$report_file"
@@ -2089,8 +2186,8 @@ HTML
     const text = targets.join('\n');
     const copied = await copyReportText(button, text);
     status.textContent = copied
-      ? `Copied ${targets.length} target${targets.length === 1 ? '' : 's'}.`
-      : 'Copy unavailable. Select the target IP:port values and copy manually.';
+      ? `Copied ${targets.length} host${targets.length === 1 ? '' : 's'}.`
+      : 'Copy unavailable. Select the Host:Port values and copy manually.';
   }
   document.querySelectorAll('.copy-targets:not(.copy-credentials)').forEach(button => {
     button.addEventListener('click', () => copyAffectedTargets(button));
@@ -2130,13 +2227,13 @@ HTML
     }).filter(Boolean);
     const unique = [...new Set(values)];
     if (!unique.length) {
-      status.textContent = targetsOnly ? 'No verified IP:Port values to copy.' : 'No entries to copy.';
+      status.textContent = targetsOnly ? 'No verified Host:Port values to copy.' : 'No entries to copy.';
       return;
     }
     const copied = await copyReportText(button, unique.join('\n'));
     const label = targetsOnly ? 'target' : 'entry';
     status.textContent = copied
-      ? `Copied ${unique.length} ${unique.length === 1 ? label : (targetsOnly ? 'targets' : 'entries')}.`
+      ? `Copied ${unique.length} ${unique.length === 1 ? label : (targetsOnly ? 'hosts' : 'entries')}.`
       : 'Copy unavailable. Select the entries and copy manually.';
   }
   document.querySelectorAll('.copy-credentials').forEach(button => {

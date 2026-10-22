@@ -31,8 +31,8 @@ actual="$(awk -F '\034' '$3 ~ /^username:/ {print $3 "\t" $4}' rows.txt)"
 [[ "$(awk -F '\034' '$2 ~ /username: bob/ {print $4}' rows.txt)" == '192.0.2.11:2222' ]] || exit 1
 [[ -z "$(awk -F '\034' '$2 ~ /unattributed|host-only|no-target/ {print $4}' rows.txt | tr -d '\n')" ]] || exit 1
 append_credential_summary_section report.html
-grep -Fq 'Copy entries with IP:Port' report.html || exit 1
-grep -Fq 'Copy IP:Port only' report.html || exit 1
+grep -Fq 'Copy entries with Host:Port' report.html || exit 1
+grep -Fq 'Copy Host:Port only' report.html || exit 1
 grep -Fq 'data-verified="true">192.0.2.10:3306' report.html || exit 1
 grep -Fq 'data-verified="true">192.0.2.12:161' report.html || exit 1
 grep -Fq 'data-verified="false">Not identified' report.html || exit 1

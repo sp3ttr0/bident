@@ -10,7 +10,7 @@ usage() {
     '' \
     'Target input:' \
     '  -f <scope-file>   Scope file to scan.' \
-    '  -t <target>       Single IP/host to test.' \
+    '  -t <target>       Single host to test.' \
     '  --resume <dir>    Resume from an existing Bident results folder.' \
     '' \
     'Options:' \

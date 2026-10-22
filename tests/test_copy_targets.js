@@ -47,8 +47,8 @@ async function test({ table = false, clipboard = 'success', fallback = true, emp
   } else {
     assert.equal(copiedText, expected);
     assert.equal(status.textContent, clipboard === 'success' || fallback
-      ? 'Copied 2 targets.'
-      : 'Copy unavailable. Select the target IP:port values and copy manually.');
+      ? 'Copied 2 hosts.'
+      : 'Copy unavailable. Select the Host:Port values and copy manually.');
     if (clipboard !== 'success') assert.ok(removed && focused);
   }
 }
@@ -78,10 +78,10 @@ async function testCredentials(mode, unknownOnly = false) {
   await copy(button);
   if (unknownOnly) {
     assert.equal(copied, undefined);
-    assert.equal(status.textContent, 'No verified IP:Port values to copy.');
+    assert.equal(status.textContent, 'No verified Host:Port values to copy.');
   } else if (mode === 'targets') {
     assert.equal(copied, '192.0.2.10:3306\n192.0.2.11:2222');
-    assert.equal(status.textContent, 'Copied 2 targets.');
+    assert.equal(status.textContent, 'Copied 2 hosts.');
   } else {
     assert.equal(copied, '192.0.2.10:3306\tusername: alice\n192.0.2.10:3306\tusername: root\n192.0.2.11:2222\tpassword: spaces & <symbols>!\nNot identified\tusername: unknown');
     assert.equal(status.textContent, 'Copied 4 entries.');
@@ -98,5 +98,5 @@ async function testCredentials(mode, unknownOnly = false) {
   await testCredentials('entries');
   await testCredentials('targets');
   await testCredentials('targets', true);
-  console.log('Copy targets checks passed.');
+  console.log('Copy hosts checks passed.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

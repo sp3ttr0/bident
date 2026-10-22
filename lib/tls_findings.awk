@@ -8,11 +8,11 @@ BEGIN {
   for (i = 1; i <= 12; i++) months[tolower(names[i])] = i
 }
 function trim(s) { gsub(/^[[:space:]]+|[[:space:]]+$/, "", s); return s }
-function record(id, text, key) {
+function record(id, text, detail, key) {
   if (endpoint == "") return
   key = id SUBSEP text
   if (!seen[key]++) {
-    ids[++count] = id; texts[count] = text; lines[count] = NR; certs[count] = certificate_id
+    ids[++count] = id; texts[count] = text; lines[count] = NR; certs[count] = certificate_id; details[count] = detail
   }
 }
 function flush(i) {
@@ -23,7 +23,7 @@ function flush(i) {
     # A negative protocol result also needs evidence of a working TLS service.
     if (ids[i] == 5 && (!working || tls13_uncertain || client_tls13_issue)) continue
     if (ids[i] == 10 && certificate_valid[certs[i]]) continue
-    output[++output_count] = ids[i] sep endpoint sep lines[i] sep texts[i]
+    output[++output_count] = ids[i] sep endpoint sep lines[i] sep texts[i] sep details[i]
     output_ids[output_count] = ids[i]
   }
   for (i in seen) delete seen[i]
@@ -31,8 +31,9 @@ function flush(i) {
   for (i in texts) delete texts[i]
   for (i in lines) delete lines[i]
   for (i in certs) delete certs[i]
+  for (i in details) delete details[i]
   for (i in certificate_valid) delete certificate_valid[i]
-  count = 0; fatal = 0; working = 0; endpoint = ""; proto = 0; script = ""; chain = 0
+  count = 0; fatal = 0; working = 0; endpoint = ""; proto = 0; proto_heading = ""; script = ""; chain = 0
   tls13_uncertain = 0; leaf_seen = 0; certificate_id = 0
 }
 function protocol_id(s) {
@@ -135,22 +136,29 @@ function expiry_time(s, a, n, t, stamp, year, month, day, hh, mm, ss, days, leap
       working = 1
       split(lower, accepted, /[[:space:]]+/)
       if (protocol_id(accepted[2]) == 11) record(11, original)
-      if (weak_cipher(lower)) record(6, original)
+      suite = ""
+      split(trim(line), suite_fields, /[[:space:]]+/)
+      for (field in suite_fields) if (tolower(suite_fields[field]) == "bits") suite = suite_fields[field + 1]
+      if (suite != "" && weak_cipher(tolower(suite))) record(6, original, suite)
     }
     # testssl category rows must affirm that a weak suite/category was offered.
-    if (kind == "testssl" && lower ~ /^(null ciphers|anonymous null ciphers|export ciphers|low:|triple des ciphers|obsolete[d]? .*ciphers|rc4)/ && lower ~ /[[:space:]]offered([^a-z]|$)/ && lower !~ /not offered|not vulnerable|unknown|could not|cannot|failed/) record(6, original)
+    if (kind == "testssl" && lower ~ /^(null ciphers|anonymous null ciphers|export ciphers|low:|triple des ciphers|obsolete[d]? .*ciphers|rc4)/ && lower ~ /[[:space:]]offered([^a-z]|$)/ && lower !~ /not offered|not vulnerable|unknown|could not|cannot|failed/) {
+      category = trim(line); sub(/[[:space:]]+offered.*$/, "", category)
+      record(6, original, "Category only: " category)
+    }
     if (kind == "testssl" && lower ~ /^breach[[:space:](]/ && (lower ~ /(gzip|deflate|compress|br):[[:space:]]*yes/ || lower ~ /(gzip|deflate|compress|br).*http compression detected/) && lower !~ /not vulnerable|no .*compression|failed|unknown|stalled/) record(7, original)
   } else {
     if (lower ~ /^(ssl-cert|ssl-enum-ciphers):/ || original ~ /^\|[_ ]?sslv2:/) {
-      script = lower; sub(/:.*/, "", script); proto = 0
+      script = lower; sub(/:.*/, "", script); proto = 0; proto_heading = ""
       sub(/^[^:]*:[[:space:]]*/, "", lower)
     }
-    if (script == "ssl-enum-ciphers" && lower ~ /^(sslv[23]([.]0)?|tlsv?1([.][0-3])?):$/) { token = lower; sub(/:$/, "", token); proto = protocol_id(token) }
+    if (script == "ssl-enum-ciphers" && lower ~ /^(sslv[23]([.]0)?|tlsv?1([.][0-3])?):$/) { token = lower; sub(/:$/, "", token); proto = protocol_id(token); proto_heading = original }
     if (script == "sslv2" && lower ~ /sslv2 supported/) { record(1, original); working = 1 }
     if (script == "ssl-enum-ciphers" && lower ~ /^tls_[a-z0-9_]+[[:space:]]+.* - [a-f]$/) {
       working = 1
-      if (proto && proto != 12) record(proto, original)
-      if (weak_cipher(lower) || lower ~ / - [df]$/) record(6, original)
+      if (proto && proto != 12) record(proto, proto_heading " | " original)
+      split(trim(line), suite_fields, /[[:space:]]+/)
+      if (weak_cipher(tolower(suite_fields[1])) || lower ~ / - [df]$/) record(6, proto_heading " | " original, suite_fields[1])
     }
     # Missing TLS 1.3 headings never establish that TLS 1.3 is disabled.
   }

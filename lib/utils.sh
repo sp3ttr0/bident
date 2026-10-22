@@ -276,7 +276,7 @@ print_final_summary() {
   print_section 'Scan Summary'
   print_summary_row 'Results Folder:' "$PWD"
   print_summary_row 'Scoped Hosts:' "$scoped_hosts" "$CLR_YELLOW"
-  print_summary_row 'Live Hosts/IPs:' "$live_hosts" "$CLR_GREEN"
+  print_summary_row 'Live Hosts:' "$live_hosts" "$CLR_GREEN"
   print_summary_row 'Total Ports Open:' "$open_rows" "${CLR_BOLD}${CLR_MAGENTA}"
   print_summary_row 'Nmap Script Result Files:' "$nse_files" "$CLR_GREEN"
   print_summary_row 'External Tool Result Files:' "$tool_files" "$CLR_GREEN"

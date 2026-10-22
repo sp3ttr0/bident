@@ -25,7 +25,7 @@ TLSv1.3 disabled
 Accepted TLSv1.3 128 bits TLS_AES_128_GCM_SHA256
 EOF
 append_tls_findings_summary findings.html
-grep -Fq 'TLSv1.3 Disabled</strong><span>1 affected target(s)' findings.html || exit 1
+grep -Fq 'TLSv1.3 Disabled</strong><span>1 affected host(s)' findings.html || exit 1
 grep -Fq '192.0.2.41:443' findings.html || exit 1
 ! grep -Fq '192.0.2.40:443' findings.html || exit 1
 ! grep -Fq '192.0.2.42:443' findings.html || exit 1
