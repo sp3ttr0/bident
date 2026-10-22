@@ -114,6 +114,7 @@ function expiry_time(s, a, n, t, stamp, year, month, day, hh, mm, ss, days, leap
   # Strip NSE tree decoration only after preserving the source line number.
   sub(/^\|[_ ]*/, "", line)
   lower = tolower(trim(line))
+  if (lower ~ /^bident tls result: incomplete/) fatal = 1
   if (lower ~ /^(fatal|error|warning:.*(connect|socket))|connection refused|unable to connect|could not connect|connection failed|no route to host|scan aborted|no ssl\/tls support|nse:.*(timed out|timeout)/) fatal = 1
   if (lower ~ /timed out|timeout|handshake failed|could not test|cannot test|unable to test|test.*inconclusive|test.*unavailable/) tls13_uncertain = 1
   if (lower ~ /ssl certificate chain|certificate chain:/) chain = 1

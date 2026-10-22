@@ -158,6 +158,7 @@ main() {
   print_section 'Scan Configuration'
   printf '%sTiming Template:%s -%s\n' "$CLR_CYAN" "$CLR_RESET" "$TIMING"
   printf '%sNSE Script Timeout:%s %s (per script instance; 0 = unlimited)\n' "$CLR_CYAN" "$CLR_RESET" "$SCRIPT_TIMEOUT"
+  printf '%sTLS Timeout Per Tool/Target:%s %s seconds\n' "$CLR_CYAN" "$CLR_RESET" "$TLS_TIMEOUT"
   printf '%sHost Discovery Timeout:%s %s\n' "$CLR_CYAN" "$CLR_RESET" "${DISCOVERY_HOST_TIMEOUT_ARGS[1]}"
   if [[ "$TOOL_TIMEOUT" -gt 0 ]]; then
     if command_available timeout; then
@@ -297,7 +298,6 @@ main() {
   else
     printf '%sUDP Mode:%s Enabled\n' "$CLR_CYAN" "$CLR_RESET"
   fi
-  print_section 'Metasploit Checks'
   if [[ "$NO_MSF" == true ]]; then
     printf '%sMetasploit Mode:%s Disabled (--no-msf Enabled)\n' "$CLR_CYAN" "$CLR_RESET"
   else
@@ -387,8 +387,6 @@ main() {
   run_if_open "AJP NSE" tcp "8009" \
     nmap -d -n -sV "-${TIMING}" --script-timeout "$SCRIPT_TIMEOUT" --min-rate "$NSE_MIN_RATE" --script 'ajp-* and not dos' -p 8009 -oN ${NSE_DIR}/s_ajp.txt -iL "$(open_targets_file_for_ports tcp 8009 ajp)" --open
   
-  run_ssl_checks
-  
   run_if_open "Kerberos NSE" tcp "88" \
     nmap -d -n -sV "-${TIMING}" --script-timeout "$SCRIPT_TIMEOUT" --min-rate "$NSE_MIN_RATE" --script krb5-enum-users -p 88 -oN ${NSE_DIR}/s_kerberos.txt -iL "$(open_targets_file_for_ports tcp 88 kerberos)" --open
   
@@ -462,6 +460,9 @@ main() {
   
   run_if_open "VNC NSE" tcp "5800,5801,5900,5901" \
     nmap -d -n -sV "-${TIMING}" --script-timeout "$SCRIPT_TIMEOUT" --min-rate "$NSE_MIN_RATE" --script 'vnc-* and not dos' -p 5800,5801,5900,5901 -oN ${NSE_DIR}/s_vnc.txt -iL "$(open_targets_file_for_ports tcp 5800,5801,5900,5901 vnc)" --open
+
+  print_section 'SSL/TLS Checks'
+  run_ssl_checks
 
   print_section 'Metasploit Checks'
   if [[ "$NO_MSF" == true ]]; then

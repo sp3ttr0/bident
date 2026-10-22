@@ -370,14 +370,46 @@ run_dns_dig_checks() {
   [[ -s "$recursion_file" ]] || rm -f "$recursion_file"
 }
 
+run_tls_target() {
+  local outfile="$1" tool="$2" entry="$3" runner="" status rc=0
+  mkdir -p "$LOG_DIR"
+  append_command_header "$outfile" "$tool" "$entry"
+  if command_available timeout; then runner="$(command -v timeout)"
+  elif command_available gtimeout; then runner="$(command -v gtimeout)"
+  fi
+  if [[ -z "$runner" ]]; then
+    status='Incomplete: timeout command unavailable'
+    rc=125
+    printf '%sInstall GNU coreutils (timeout/gtimeout) to run bounded TLS checks.%s\n' "$CLR_YELLOW" "$CLR_RESET"
+  else
+    run_unprivileged "$runner" --kill-after=10s "${TLS_TIMEOUT}s" "$tool" "$entry" >> "$outfile" 2>&1 || rc=$?
+  fi
+  if [[ -z "${status:-}" ]]; then
+    case "$rc" in
+      0) status='Finished; review output' ;;
+      124) status="Incomplete: per-target timeout (${TLS_TIMEOUT}s)" ;;
+      137) status='Incomplete: timeout or forced termination' ;;
+      *) status="Incomplete: tool exited with status ${rc}" ;;
+    esac
+  fi
+  printf '\nBident TLS result: %s\n' "$status" >> "$outfile"
+  printf '%s\t%s\t%s\t%s\t%s\n' "$tool" "$entry" "$status" "$rc" "$outfile" >> "${LOG_DIR}/tls_status.tsv"
+  if [[ "$rc" -ne 0 ]]; then
+    printf '%s%s %s: %s. Continuing remaining checks.%s\n' "$CLR_YELLOW" "$tool" "$entry" "$status" "$CLR_RESET"
+  fi
+  return 0
+}
+
 run_ssl_checks() {
+  mkdir -p "$LOG_DIR"
+  : > "${LOG_DIR}/tls_status.tsv"
   if command_available testssl || command_available sslscan; then
     printf '%sSSL/TLS Mode:%s External tools available; skipping SSL/TLS NSE fallback.\n' "$CLR_CYAN" "$CLR_RESET"
     run_ssl_external_checks
   else
     printf '%sSSL/TLS Mode:%s Neither testssl nor sslscan found; using NSE fallback.\n' "$CLR_YELLOW" "$CLR_RESET"
-    run_if_open "SSL/TLS NSE" tcp "443,465,587,636,993,995,3269,3389,8443" \
-      nmap -d -n -sV "-${TIMING}" --script-timeout "$SCRIPT_TIMEOUT" --min-rate "$NSE_MIN_RATE" --script 'ssl-* and not dos' -p 443,465,587,636,993,995,3269,3389,8443 -oN "${NSE_DIR}/ssl_tls_results.txt" -iL "$(open_targets_file_for_ports tcp 443,465,587,636,993,995,3269,3389,8443 ssl_tls)" --open
+    run_if_open "SSL/TLS NSE" tcp "443,465,636,993,995,3269,8443" \
+      nmap -d -n -sV "-${TIMING}" --script-timeout "$SCRIPT_TIMEOUT" --min-rate "$NSE_MIN_RATE" --script 'ssl-* and not dos' -p 443,465,636,993,995,3269,8443 -oN "${NSE_DIR}/ssl_tls_results.txt" -iL "$(open_targets_file_for_ports tcp 443,465,636,993,995,3269,8443 ssl_tls)" --open
   fi
 }
 
@@ -414,7 +446,7 @@ run_ssl_external_checks() {
     [[ -n "${target:-}" ]] || continue
     found=true
     ssl_targets+=("${target}:${port}")
-  done < <(open_target_ports tcp 443 465 587 636 993 995 3269 3389 8443)
+  done < <(open_target_ports tcp 443 465 636 993 995 3269 8443)
 
   if [[ "$found" == false ]]; then
     [[ ! -e ${TOOL_DIR}/testssl_results.txt || -s ${TOOL_DIR}/testssl_results.txt ]] || rm -f ${TOOL_DIR}/testssl_results.txt
@@ -429,7 +461,7 @@ run_ssl_external_checks() {
     completed_targets=0
     print_progress_bar "testssl Progress" "$completed_targets" "$total_targets"
     for entry in "${ssl_targets[@]}"; do
-      run_logged ${TOOL_DIR}/testssl_results.txt testssl "$entry" || true
+      run_tls_target "${TOOL_DIR}/testssl_results.txt" testssl "$entry"
       completed_targets=$((completed_targets + 1))
       print_progress_bar "testssl Progress" "$completed_targets" "$total_targets"
     done
@@ -440,7 +472,7 @@ run_ssl_external_checks() {
     completed_targets=0
     print_progress_bar "sslscan Progress" "$completed_targets" "$total_targets"
     for entry in "${ssl_targets[@]}"; do
-      run_logged ${TOOL_DIR}/sslscan_results.txt sslscan "$entry" || true
+      run_tls_target "${TOOL_DIR}/sslscan_results.txt" sslscan "$entry"
       completed_targets=$((completed_targets + 1))
       print_progress_bar "sslscan Progress" "$completed_targets" "$total_targets"
     done

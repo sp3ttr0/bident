@@ -159,7 +159,16 @@ TLS checks run testssl first as the primary assessment and sslscan next as a
 cross-check when installed. If only one is installed, Bident uses that tool.
 The SSL/TLS NSE group runs only when neither external tool is available; an
 external tool error does not trigger an automatic NSE retry. The target ports
-remain 443, 465, 587, 636, 993, 995, 3269, 3389, and 8443.
+are 443, 465, 636, 993, 995, 3269, and 8443.
+
+The SSL/TLS stage runs after the other NSE checks, before Metasploit. Each
+external TLS tool has a fixed 30-minute limit per IP:port, independent of
+`--tool-timeout`. A timeout sends TERM, with KILL after a further 10 seconds
+if necessary, then continues to the next check. GNU `timeout` or `gtimeout`
+is required; if missing, checks are marked incomplete rather than run without
+a limit. Status and execution logs
+appear under **Core Artifacts → TLS External Check Status**. Raw output remains
+available, but incomplete runs are excluded from verified TLS findings.
 
 All Nmap scan commands that can execute NSE scripts receive `--script-timeout`,
 including version-detection scripts. Brute-force checks remain enabled as before.

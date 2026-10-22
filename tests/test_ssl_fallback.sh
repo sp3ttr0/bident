@@ -3,6 +3,12 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 source lib/config.sh
 source lib/checks.sh
+awk '
+  /run_if_open.*NSE/ {last_nse = NR}
+  /^[[:space:]]*run_ssl_checks$/ {tls = NR; count++}
+  /^[[:space:]]*run_msf_auxiliary_checks$/ {msf = NR}
+  END {if (count != 1 || tls <= last_nse || tls >= msf) exit 1}
+' lib/workflow.sh || exit 1
 test_dir="$(mktemp -d /tmp/bident-ssl-fallback.XXXXXX)"
 cd "$test_dir"
 mkdir -p "$TOOL_DIR"
@@ -16,7 +22,7 @@ command_available() {
 open_target_ports() { printf '192.0.2.1 443\n'; }
 open_targets_file_for_ports() { printf 'tls-targets.txt'; }
 print_progress_bar() { :; }
-run_logged() { shift; printf '%s\n' "$*" >> calls.txt; return "${external_status:-0}"; }
+run_tls_target() { shift; printf '%s\n' "$*" >> calls.txt; return 0; }
 run_if_open() { shift 3; "$@"; }
 nmap() { printf 'nmap %s\n' "$*" >> calls.txt; }
 check_case() {

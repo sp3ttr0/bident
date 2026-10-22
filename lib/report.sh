@@ -313,6 +313,21 @@ append_nse_status_artifacts() {
   } >> "$outfile"
 }
 
+append_tls_status_artifacts() {
+  local outfile="$1" tool endpoint status rc source_file
+  [[ -s "${LOG_DIR}/tls_status.tsv" ]] || return 0
+  {
+    printf '  <details class="artifact artifact-group"><summary>TLS External Check Status</summary>\n'
+    printf '    <p class="muted">Per-tool, per-target timeout: %s seconds. Incomplete output is excluded from verified TLS findings.</p>\n' "$(html_escape_text "$TLS_TIMEOUT")"
+    printf '    <ul>\n'
+    while IFS=$'\t' read -r tool endpoint status rc source_file; do
+      printf '      <li><strong>%s %s</strong>: %s — <a href="%s">execution log</a></li>\n' \
+        "$(html_escape_text "$tool")" "$(html_escape_text "$endpoint")" "$(html_escape_text "$status")" "$(html_escape_text "$source_file")"
+    done < "${LOG_DIR}/tls_status.tsv"
+    printf '    </ul>\n  </details>\n'
+  } >> "$outfile"
+}
+
 append_scan_configuration_section() {
   local outfile="$1"
   local scope_display="${SCOPE_FILE:-resume}"
@@ -2035,6 +2050,7 @@ HTML
   append_core_artifact_group "$report_file" "Nmap Script Results" \
     "${NSE_DIR}"/*.txt
   append_nse_status_artifacts "$report_file"
+  append_tls_status_artifacts "$report_file"
   append_msf_failed_artifacts "$report_file"
   append_core_artifact_group "$report_file" "External Tool Results" \
     "${TOOL_DIR}"/*.txt
