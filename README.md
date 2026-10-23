@@ -274,3 +274,12 @@ Only successful remote cipher rows are parsed; local catalogues, client
 simulations, rejected suites, and incomplete runs do not establish affected
 cipher names. Category-only historical logs show that individual names are
 unavailable and require a rescan; no names are inferred from category labels.
+
+External check failures (RPC, LDAP, NetExec, ssh-audit, DNS dig, and ike-scan)
+print **Incomplete** rather than a negative finding. Nonzero execution errors,
+timeouts, Python dependency tracebacks, and connection errors are saved with
+the command and full output under `logs/external_*`; the HTML report embeds
+them under **Core Artifacts → External Tool Failed / Incomplete Checks**.
+ssh-audit exit codes 2 and 3 indicate algorithm warnings/failures and remain
+eligible for findings. TLS and Metasploit keep their dedicated incomplete-check
+sections. Failed executions are excluded from credential/finding input files.

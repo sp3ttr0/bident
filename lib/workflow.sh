@@ -229,6 +229,7 @@ main() {
   allow_unprivileged_output_writes
   start_scan_timing
   : > "${LOG_DIR}/nse_status.tsv"
+  : > "${LOG_DIR}/external_status.tsv"
   
   if [[ "$RUN_RESPONDER" == true ]]; then
     ensure_screen_sessions_available responder

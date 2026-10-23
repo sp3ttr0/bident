@@ -41,7 +41,8 @@ title_case_acronyms() {
       lower = tolower($i)
       if (lower == "ssh" || lower == "ftp" || lower == "smtp" || lower == "dns" ||
           lower == "smb" || lower == "mssql" || lower == "mysql" || lower == "rdp" ||
-          lower == "vnc" || lower == "snmp" || lower == "ntp") {
+          lower == "vnc" || lower == "snmp" || lower == "ntp" ||
+          lower == "msrpc" || lower == "ldap" || lower == "afp" || lower == "sip") {
         $i = toupper($i)
       } else {
         $i = toupper(substr($i, 1, 1)) substr($i, 2)
@@ -190,6 +191,19 @@ append_core_artifact_group() {
   fi
 
   rm -f "$temp_file"
+}
+
+append_external_failed_artifacts() {
+  local outfile="$1" label status rc log_file
+  [[ -s "${LOG_DIR}/external_status.tsv" ]] || return 0
+  printf '<details class="artifact artifact-group"><summary>External Tool Failed / Incomplete Checks</summary>\n' >> "$outfile"
+  while IFS=$'\t' read -r label status rc log_file; do
+    printf '<details class="artifact result-panel"><summary>%s — %s</summary><pre>' "$(html_escape_text "$label")" "$(html_escape_text "$status")" >> "$outfile"
+    if [[ -s "$log_file" ]]; then html_escape_file "$log_file" >> "$outfile"
+    else printf 'Execution log unavailable.' >> "$outfile"; fi
+    printf '</pre></details>\n' >> "$outfile"
+  done < "${LOG_DIR}/external_status.tsv"
+  printf '</details>\n' >> "$outfile"
 }
 
 append_msf_output_artifacts() {
@@ -787,22 +801,59 @@ append_msf_failed_artifacts() {
   rm -f "$temp_file"
 }
 
+ftp_anonymous_nse_lines() {
+  local file="$1" mode="${2:-rows}"
+  html_escape_stream < "$file" | awk -v mode="$mode" '
+    function flush(key) {
+      if (host != "" && port != "" && evidence != "" && !failed) {
+        key=(host ~ /:/ ? "[" host "]" : host) ":" port
+        if (mode == "endpoints") print key
+        else if (mode == "rows") print key "\034" evidence_nr "\034" evidence
+        else print evidence
+      }
+      evidence=""; failed=0; active=0
+    }
+    /^Nmap scan report for / {flush(); host=$NF; gsub(/[()]/,"",host); port=""; next}
+    /^[0-9]+\/(tcp|udp)[[:space:]]/ {
+      flush(); port=""
+      if ($0 ~ /^[0-9]+\/tcp[[:space:]]+open[[:space:]]/) {port=$1; sub(/\/.*/,"",port)}
+      next
+    }
+    /^Host script results:|^===== |^Command:/ {flush(); host=""; port=""; next}
+    {
+      original=$0; text=$0; sub(/^\|[_ ]*/,"",text)
+      lower=tolower(text)
+      if (lower ~ /^ftp-anon:/) {flush(); active=1}
+      else if (lower ~ /^[a-z0-9_-]+:/ && lower !~ /^error:/) {flush()}
+      if (active && lower ~ /^ftp-anon:[[:space:]]*anonymous ftp login allowed[[:space:]]*\(ftp code 230\)/) {evidence=original; evidence_nr=NR}
+      if (active && lower ~ /error:|script execution failed|timed out|login denied|not allowed/) failed=1
+    }
+    END {flush()}
+  ' | if [[ "$mode" == endpoints ]]; then verified_ip_port_lines; else cat; fi
+}
+
+finding_source_lines() {
+  if [[ "$1" == "${NSE_DIR}/s_ftp.txt" ]]; then ftp_anonymous_nse_lines "$@"
+  else msf_finding_lines "$@"; fi
+}
+
 append_finding_glob_item() {
   local outfile="$1"
   local severity="$2"
   local title="$3"
   local source_pattern="$4"
   local detail="${5:-}"
-  local source_file
+  local source_file nse_source=""
+  if [[ "$title" == "FTP Anonymous Enabled" ]]; then nse_source="${NSE_DIR}/s_ftp.txt"; fi
   local files=()
   local count=0
   local evidence_count endpoints="" file_endpoints evidence_rows endpoint evidence_line evidence_text
 
-  for source_file in $source_pattern; do
+  for source_file in $source_pattern "$nse_source"; do
     [[ -s "$source_file" ]] || continue
-    evidence_count="$(msf_finding_lines "$source_file" | awk 'END {print NR + 0}')"
+    evidence_count="$(finding_source_lines "$source_file" | awk 'END {print NR + 0}')"
     [[ "$evidence_count" -gt 0 ]] || continue
-    file_endpoints="$(msf_finding_lines "$source_file" endpoints)"
+    file_endpoints="$(finding_source_lines "$source_file" endpoints)"
     [[ -n "$file_endpoints" ]] || continue
     endpoints="${endpoints}${file_endpoints}"$'\n'
     files+=("$source_file")
@@ -822,7 +873,7 @@ append_finding_glob_item() {
     for source_file in "${files[@]}"; do
       while IFS=$'\034' read -r endpoint evidence_line evidence_text; do
         printf '%s\034\034%s:%s\034%s\n' "$endpoint" "$source_file" "$evidence_line" "$evidence_text" >> "$evidence_rows"
-      done < <(msf_finding_lines "$source_file" rows)
+      done < <(finding_source_lines "$source_file" rows)
     done
     append_endpoint_evidence_table "$evidence_rows" "$endpoints" true
     rm -f "$evidence_rows"
@@ -1231,6 +1282,18 @@ normalize_service_name() {
       ;;
     ntp)
       printf 'NTP'
+      ;;
+    msrpc)
+      printf 'MSRPC'
+      ;;
+    ldap|ldapssl|ldaps)
+      printf 'LDAP'
+      ;;
+    afp)
+      printf 'AFP'
+      ;;
+    sip)
+      printf 'SIP'
       ;;
     snmp|snmptrap)
       printf 'SNMP'
@@ -2190,7 +2253,6 @@ HTML
     printf '  </div>\n' >> "$report_file"
   fi
 
-  append_nse_status_section "$report_file"
   append_findings_summary_section "$report_file"
   append_credential_summary_section "$report_file"
 
@@ -2212,9 +2274,9 @@ HTML
     targets_with_open_ports/open_ports_by_target.txt
   append_core_artifact_group "$report_file" "Nmap Script Results" \
     "${NSE_DIR}"/*.txt
-  append_nse_status_artifacts "$report_file"
   append_tls_status_artifacts "$report_file"
   append_msf_failed_artifacts "$report_file"
+  append_external_failed_artifacts "$report_file"
   append_core_artifact_group "$report_file" "External Tool Results" \
     "${TOOL_DIR}"/*.txt
   if [[ "${NO_MSF:-false}" != true ]]; then

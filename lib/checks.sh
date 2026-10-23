@@ -108,6 +108,10 @@ result_output_has_finding() {
     "Misconfigured Server Message Block Signing")
       grep -Eq 'signing:False' "$result_file"
       ;;
+    "DNS Recursion Enabled")
+      grep -q 'status: NOERROR' "$result_file" && grep -Eq 'ANSWER: [1-9][0-9]*' "$result_file" &&
+        grep -Eq 'flags:.*[[:space:]]rd[;[:space:]].*[[:space:]]ra[;[:space:]]' "$result_file"
+      ;;
     "SMBv1 Enabled")
       grep -Eq 'SMBv1:True' "$result_file"
       ;;
@@ -115,6 +119,32 @@ result_output_has_finding() {
       grep -Ev '^[[:space:]]*$|^===== |^Command:' "$result_file" >/dev/null
       ;;
   esac
+}
+
+run_external_capture() {
+  local label="$1" output="$2" rc=0 status slug log_file tool
+  shift 2
+  tool="${1##*/}"
+  run_with_timeout "$@" > "$output" 2>&1 || rc=$?
+  status=""
+  if [[ "$tool" == ssh-audit && ( "$rc" -eq 2 || "$rc" -eq 3 ) ]]; then :
+  elif [[ "$rc" -eq 124 || "$rc" -eq 137 ]]; then status="Incomplete: timeout or forced termination (exit ${rc})"
+  elif [[ "$rc" -ne 0 ]]; then status="Incomplete: command failed (exit ${rc})"
+  fi
+  if grep -Eiq 'Traceback \(most recent call last\)|AttributeError:|ImportError:|ModuleNotFoundError:|SyntaxError:|command not found|connection refused|connection reset|no route to host|timed out|no servers could be reached|network is unreachable|cannot connect|unable to connect|can.t contact LDAP server|^ldap_[a-z_]+:|^fatal([ :]|$)|^error([ :]|$)|status: (SERVFAIL|REFUSED|FORMERR)' "$output"; then
+    status='Incomplete: tool or connection error'
+  fi
+  if [[ -n "$status" ]]; then
+    mkdir -p "$LOG_DIR"
+    slug="$(printf '%s' "$label" | tr -c '[:alnum:]_-' '_')"
+    log_file="$(mktemp "${LOG_DIR}/external_${slug}.XXXXXX")"
+    append_command_header "$log_file" "$@"
+    cat "$output" >> "$log_file"
+    printf '%s\t%s\t%s\t%s\n' "$label" "$status" "$rc" "$log_file" >> "${LOG_DIR}/external_status.tsv"
+    printf '%s%s: %s. Details: %s%s\n' "$CLR_YELLOW" "$label" "$status" "$log_file" "$CLR_RESET"
+    return 1
+  fi
+  return 0
 }
 
 run_logged_check() {
@@ -125,7 +155,10 @@ run_logged_check() {
   shift 2
 
   temp_output="$(mktemp "${TMPDIR:-/tmp}/bident_check.XXXXXX")"
-  run_with_timeout "$@" > "$temp_output" 2>&1 || status=$?
+  if ! run_external_capture "$label" "$temp_output" "$@"; then
+    rm -f "$temp_output"
+    return 0
+  fi
   if result_output_has_finding "$label" "$temp_output"; then
     append_command_header "$outfile" "$@"
     cat "$temp_output" >> "$outfile"
@@ -219,34 +252,9 @@ run_smb_external_checks() {
     return
   fi
 
-  printf '%sChecking For Misconfigured Server Message Block Signing%s\n' "$CLR_CYAN" "$CLR_RESET"
-  temp_output="$(mktemp "${TMPDIR:-/tmp}/bident_check.XXXXXX")"
-  run_with_timeout netexec smb --gen-relay-list ${TOOL_DIR}/targets_smb.txt "$LIVE_TARGETS_FILE" 2>&1 \
-    | grep 'signing:False' > "$temp_output" || true
-  if [[ -s "$temp_output" ]]; then
-    append_command_header ${TOOL_DIR}/nxc_smb_signing_false.txt netexec smb --gen-relay-list ${TOOL_DIR}/targets_smb.txt "$LIVE_TARGETS_FILE"
-    cat "$temp_output" >> ${TOOL_DIR}/nxc_smb_signing_false.txt
-  else
-    rm -f ${TOOL_DIR}/nxc_smb_signing_false.txt
-  fi
-  print_check_result "Misconfigured Server Message Block Signing" "$temp_output"
-  if result_output_has_finding "Misconfigured Server Message Block Signing" "$temp_output"; then
-    print_smb_relay_note
-  fi
-  rm -f "$temp_output"
-
-  printf '%sChecking For SMBv1 Enabled%s\n' "$CLR_CYAN" "$CLR_RESET"
-  temp_output="$(mktemp "${TMPDIR:-/tmp}/bident_check.XXXXXX")"
-  run_with_timeout netexec smb "$LIVE_TARGETS_FILE" 2>&1 \
-    | grep 'SMBv1:True' > "$temp_output" || true
-  if [[ -s "$temp_output" ]]; then
-    append_command_header ${TOOL_DIR}/nxc_smbv1_true.txt netexec smb "$LIVE_TARGETS_FILE"
-    cat "$temp_output" >> ${TOOL_DIR}/nxc_smbv1_true.txt
-  else
-    rm -f ${TOOL_DIR}/nxc_smbv1_true.txt
-  fi
-  print_check_result "SMBv1 Enabled" "$temp_output"
-  rm -f "$temp_output"
+  rm -f "${TOOL_DIR}/nxc_smb_signing_false.txt" "${TOOL_DIR}/nxc_smbv1_true.txt"
+  run_logged_check "Misconfigured Server Message Block Signing" "${TOOL_DIR}/nxc_smb_signing_false.txt" netexec smb --gen-relay-list "${TOOL_DIR}/targets_smb.txt" "$LIVE_TARGETS_FILE"
+  run_logged_check "SMBv1 Enabled" "${TOOL_DIR}/nxc_smbv1_true.txt" netexec smb "$LIVE_TARGETS_FILE"
 }
 
 run_ssh_audit_check() {
@@ -255,6 +263,7 @@ run_ssh_audit_check() {
   local temp_output
   local ssh_audit_cmd
   local finding_found=false
+  local incomplete=false
   local total_targets=0
   local completed_targets=0
   rm -f "${TOOL_DIR}/ssh_weak_cipher_targets.txt"
@@ -283,7 +292,13 @@ run_ssh_audit_check() {
   while IFS= read -r target; do
     [[ -n "${target:-}" ]] || continue
     temp_output="$(mktemp "${TMPDIR:-/tmp}/bident_check.XXXXXX")"
-    run_with_timeout "$ssh_audit_cmd" "$target" > "$temp_output" 2>&1 || true
+    if ! run_external_capture "ssh-audit ${target}:22" "$temp_output" "$ssh_audit_cmd" "$target"; then
+      incomplete=true
+      rm -f "$temp_output"
+      completed_targets=$((completed_targets + 1))
+      print_progress_bar "ssh-audit Progress" "$completed_targets" "$total_targets"
+      continue
+    fi
     if result_output_has_finding "Weak SSH Ciphers" "$temp_output"; then
       finding_found=true
       append_command_header ${TOOL_DIR}/ssh-audit_results.txt "$ssh_audit_cmd" "$target"
@@ -299,80 +314,38 @@ run_ssh_audit_check() {
     ssh_weak_cipher_rows "${TOOL_DIR}/ssh-audit_results.txt" | cut -f1 | sort -u > "${TOOL_DIR}/ssh_weak_cipher_targets.txt"
   else
     rm -f ${TOOL_DIR}/ssh-audit_results.txt
-    printf '%sNo Weak SSH Ciphers Found%s\n' "$CLR_YELLOW" "$CLR_RESET"
+    if [[ "$incomplete" == true ]]; then printf '%sssh-audit: Incomplete; one or more hosts could not be checked.%s\n' "$CLR_YELLOW" "$CLR_RESET"
+    else printf '%sNo Weak SSH Ciphers Found%s\n' "$CLR_YELLOW" "$CLR_RESET"; fi
   fi
 }
 
 run_dns_dig_checks() {
-  local target
-  local port
-  local temp_output
-  local dnssec_file="${TOOL_DIR}/dnssec_not_configured.txt"
-  local recursion_file="${TOOL_DIR}/dns_recursion_enabled.txt"
-
-  if ! has_open_port any 53; then
-    return
-  fi
-
+  local target port temp_output
+  local dig_args=(dig)
+  has_open_port any 53 || return 0
   if ! command_available dig; then
     printf '%sSkipping DNS dig Checks:%s Command Not Found\n' "$CLR_YELLOW" "$CLR_RESET"
-    return
+    return 0
   fi
-
-  : > "$dnssec_file"
-  : > "$recursion_file"
-
+  [[ "$NO_UDP" != true ]] || dig_args+=(+tcp)
+  rm -f "${TOOL_DIR}/dnssec_not_configured.txt" "${TOOL_DIR}/dns_recursion_enabled.txt"
   while read -r target port; do
-    [[ -n "${target:-}" ]] || continue
-
-    printf '%sChecking For DNSSec Not Configured:%s %s:%s\n' "$CLR_CYAN" "$CLR_RESET" "$target" "$port"
-    temp_output="$(mktemp "${TMPDIR:-/tmp}/bident_check.XXXXXX")"
-    if [[ "$NO_UDP" == true ]]; then
-      run_with_timeout dig +tcp +dnssec "@${target}" google.com A > "$temp_output" 2>&1 || true
-    else
-      run_with_timeout dig +dnssec "@${target}" google.com A > "$temp_output" 2>&1 || true
-    fi
-    if grep -q 'flags:' "$temp_output" && ! grep -Eq 'flags:.*[[:space:]]ad[;[:space:]]' "$temp_output"; then
-      if [[ "$NO_UDP" == true ]]; then
-        append_command_header "$dnssec_file" dig +tcp +dnssec "@${target}" google.com A
-      else
-        append_command_header "$dnssec_file" dig +dnssec "@${target}" google.com A
-      fi
-      cat "$temp_output" >> "$dnssec_file"
-      printf '%sDNSSec Not Configured Found%s\n' "$CLR_GREEN" "$CLR_RESET"
-    else
-      printf '%sNo DNSSec Not Configured Found%s\n' "$CLR_YELLOW" "$CLR_RESET"
+    [[ -n "$target" ]] || continue
+    temp_output="$(mktemp "${TMPDIR:-/tmp}/bident_dns.XXXXXX")"
+    if run_external_capture "DNSSEC ${target}:${port}" "$temp_output" "${dig_args[@]}" +dnssec "@${target}" google.com A; then
+      printf '%sDNSSEC %s:%s: Query completed; missing AD alone is inconclusive.%s\n' "$CLR_CYAN" "$target" "$port" "$CLR_RESET"
     fi
     rm -f "$temp_output"
-
-    printf '%sChecking For DNS Recursion Enabled:%s %s:%s\n' "$CLR_CYAN" "$CLR_RESET" "$target" "$port"
-    temp_output="$(mktemp "${TMPDIR:-/tmp}/bident_check.XXXXXX")"
-    if [[ "$NO_UDP" == true ]]; then
-      run_with_timeout dig +tcp "@${target}" google.com A > "$temp_output" 2>&1 || true
-    else
-      run_with_timeout dig "@${target}" google.com A > "$temp_output" 2>&1 || true
-    fi
-    if grep -Eq 'flags:.*[[:space:]]ra[;[:space:]]' "$temp_output"; then
-      if [[ "$NO_UDP" == true ]]; then
-        append_command_header "$recursion_file" dig +tcp "@${target}" google.com A
-      else
-        append_command_header "$recursion_file" dig "@${target}" google.com A
-      fi
-      cat "$temp_output" >> "$recursion_file"
-      printf '%sDNS Recursion Enabled Found%s\n' "$CLR_GREEN" "$CLR_RESET"
-    else
-      printf '%sNo DNS Recursion Enabled Found%s\n' "$CLR_YELLOW" "$CLR_RESET"
-    fi
-    rm -f "$temp_output"
+    run_logged_check "DNS Recursion Enabled" "${TOOL_DIR}/dns_recursion_enabled.txt" "${dig_args[@]}" "@${target}" google.com A
   done < <(open_target_ports any 53)
-
-  [[ -s "$dnssec_file" ]] || rm -f "$dnssec_file"
-  [[ -s "$recursion_file" ]] || rm -f "$recursion_file"
 }
 
 run_tls_target() {
   local outfile="$1" tool="$2" entry="$3" runner="" status rc=0
   mkdir -p "$LOG_DIR"
+  local output_start
+  output_start=1
+  if [[ -f "$outfile" ]]; then output_start=$(( $(wc -l < "$outfile") + 1 )); fi
   local tool_args=("$tool")
   if [[ "$tool" == testssl ]]; then tool_args=("$tool" --wide --mapping iana); fi
   append_command_header "$outfile" "${tool_args[@]}" "$entry"
@@ -386,6 +359,9 @@ run_tls_target() {
   else
     run_unprivileged "$runner" --kill-after=10s "${TLS_TIMEOUT}s" "${tool_args[@]}" "$entry" >> "$outfile" 2>&1 || rc=$?
   fi
+  if [[ "$rc" -eq 0 ]] && tail -n "+${output_start}" "$outfile" | grep -Ei 'Traceback \(most recent call last\)|AttributeError:|ImportError:|ModuleNotFoundError:|^fatal([ :]|$)|^error([ :]|$)|connection refused|unable to connect' > /dev/null; then
+    status='Incomplete: tool or connection error'
+  fi
   if [[ -z "${status:-}" ]]; then
     case "$rc" in
       0) status='Finished; review output' ;;
@@ -396,7 +372,7 @@ run_tls_target() {
   fi
   printf '\nBident TLS result: %s\n' "$status" >> "$outfile"
   printf '%s\t%s\t%s\t%s\t%s\n' "$tool" "$entry" "$status" "$rc" "$outfile" >> "${LOG_DIR}/tls_status.tsv"
-  if [[ "$rc" -ne 0 ]]; then
+  if [[ "$status" == Incomplete:* ]]; then
     printf '%s%s %s: %s. Continuing remaining checks.%s\n' "$CLR_YELLOW" "$tool" "$entry" "$status" "$CLR_RESET"
   fi
   return 0
@@ -509,7 +485,10 @@ run_ike_weak_encryption_check() {
 
     printf '%sChecking For IKE VPN Peer Weak Encryption:%s %s:%s\n' "$CLR_CYAN" "$CLR_RESET" "$target" "$port"
     temp_output="$(mktemp "${TMPDIR:-/tmp}/bident_check.XXXXXX")"
-    run_with_timeout ike-scan -M "$target" > "$temp_output" 2>&1 || true
+    if ! run_external_capture "IKE ${target}:${port}" "$temp_output" ike-scan -M "$target"; then
+      rm -f "$temp_output"
+      continue
+    fi
 
     if grep -Eiq '(^|[^A-Za-z0-9])(3des|des|md5|sha-?1|group[[:space:]]*1|group[[:space:]]*2|modp768|modp1024)([^A-Za-z0-9]|$)' "$temp_output"; then
       append_command_header "$outfile" ike-scan -M "$target"
