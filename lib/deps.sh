@@ -89,19 +89,16 @@ check_external_tool_startup() {
   local TOOL_TIMEOUT=20
   NETEXEC_STARTUP_OK=false
   RPCDUMP_STARTUP_OK=false
-  print_section 'External Tool Startup Checks'
   output="$(mktemp "${TMPDIR:-/tmp}/bident_startup.XXXXXX")"
   # Listing modules loads the SMB implementation; --help can exit before
   # importing the dependencies used during a real SMB check. No targets given.
   if run_external_capture 'NetExec SMB startup check' "$output" netexec smb -L; then
     NETEXEC_STARTUP_OK=true
-    printf '  %s[OK]%s NetExec SMB dependencies loaded.\n' "$CLR_GREEN" "$CLR_RESET"
   else
     printf '  %s[INCOMPLETE]%s NetExec SMB checks will be skipped for this run.\n' "$CLR_YELLOW" "$CLR_RESET"
   fi
   if run_external_capture 'impacket-rpcdump startup check' "$output" impacket-rpcdump -h; then
     RPCDUMP_STARTUP_OK=true
-    printf '  %s[OK]%s impacket-rpcdump dependencies loaded.\n' "$CLR_GREEN" "$CLR_RESET"
   else
     printf '  %s[INCOMPLETE]%s impacket-rpcdump checks will be skipped for this run.\n' "$CLR_YELLOW" "$CLR_RESET"
   fi

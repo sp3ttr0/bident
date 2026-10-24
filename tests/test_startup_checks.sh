@@ -38,6 +38,7 @@ run_with_timeout() { [[ "$TOOL_TIMEOUT" == 20 ]] || return 98; "$@"; }
 export STARTUP_BROKEN=false
 check_external_tool_startup > ok-terminal
 [[ "$NETEXEC_STARTUP_OK" == true && "$RPCDUMP_STARTUP_OK" == true ]] || exit 1
+[[ ! -s ok-terminal ]] || exit 1
 [[ ! -s "$LOG_DIR/external_status.tsv" ]] || exit 1
 export STARTUP_BROKEN=true
 check_external_tool_startup > failed-terminal
