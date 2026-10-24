@@ -110,4 +110,18 @@ grep -Fq 'does not appear vulnerable to MS17-010' actual-output.html || exit 1
 MSF_RESULT_DIR=missing-results append_msf_output_artifacts missing-output.html
 grep -Fq 'No per-module result files were saved' missing-output.html || exit 1
 grep -Fq 'Console execution detail' missing-output.html || exit 1
+# Real Metasploit RDP output prefixes the result with a peer before the
+# repeated "Detected RDP on" endpoint. Both NLA settings are discoveries.
+cat > "$MSF_RESULT_DIR/rdp_scanner_tcp_3389.txt" <<'RDPFORMAT'
+[*] 192.0.2.20:3389 - Detected RDP on 192.0.2.20:3389 (name:SERVER01) (domain:LAB) (os_version:6.3.9600) (Requires NLA: No)
+[*] 192.0.2.21:3389 - Detected RDP on 192.0.2.21:3389 (name:SERVER02) (domain:LAB) (os_version:10.0.17763) (Requires NLA: Yes)
+[*] Scanned 2 of 2 hosts (100% complete)
+[*] Auxiliary module execution completed
+RDPFORMAT
+[[ "$(msf_finding_lines "$MSF_RESULT_DIR/rdp_scanner_tcp_3389.txt" endpoints)" == $'192.0.2.20:3389\n192.0.2.21:3389' ]] || exit 1
+append_findings_summary_section rdp-format.html
+grep -Fq '<strong>Remote Desktop Protocol Detection</strong>' rdp-format.html || exit 1
+grep -Fq '<td>192.0.2.20:3389</td>' rdp-format.html || exit 1
+grep -Fq '<td>192.0.2.21:3389</td>' rdp-format.html || exit 1
+grep -Fq 'rdp_scanner_tcp_3389.txt:1' rdp-format.html || exit 1
 printf 'Metasploit finding checks passed.\n'

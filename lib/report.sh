@@ -55,6 +55,7 @@ title_case_acronyms() {
 default_result_label() {
   local result_name="${1##*/}"
   local msf_name
+  if [[ "$result_name" == nbname_udp_137.txt ]]; then printf 'NetBIOS Information Disclosure'; return; fi
 
   if [[ "$result_name" =~ ^[A-Za-z0-9_]+_(tcp|udp)_[0-9]+\.txt$ ]]; then
     msf_name="${result_name%.txt}"
@@ -689,9 +690,17 @@ append_finding_item() {
 # Only explicit module result messages qualify as Metasploit findings.
 # The HTML renderer also normalizes ANSI sequences before classification.
 msf_finding_lines() {
-  local file="$1" kind="${1##*/}" mode="${2:-evidence}" port=""
-  if [[ "$kind" =~ _(tcp|udp)_([0-9]+)[.]txt$ ]]; then port="${BASH_REMATCH[2]}"; fi
-  html_escape_stream < "$file" | awk -v kind="$kind" -v mode="$mode" -v default_port="$port" '
+  local file="$1" kind="${1##*/}" mode="${2:-evidence}" port="" scope_file=""
+  if [[ "$kind" =~ _(tcp|udp)_([0-9]+)[.]txt$ ]]; then
+    port="${BASH_REMATCH[2]}"
+    scope_file="${MSF_DIR}/targets_${BASH_REMATCH[1]}_${port}.txt"
+    [[ -s "$scope_file" ]] || scope_file=""
+  fi
+  html_escape_stream < "$file" | awk -v kind="$kind" -v mode="$mode" -v default_port="$port" -v scope_file="$scope_file" '
+    BEGIN {
+      if (scope_file != "") while ((getline scoped_host < scope_file) > 0) {gsub(/^[[:space:]]+|[[:space:]]+$/, "", scoped_host); allowed[scoped_host]=1}
+      if (scope_file != "") close(scope_file)
+    }
     function endpoint_from_message(message, ip, port, n, parts, j) {
       sub(/^\[[+*]\][[:space:]]*/, "", message)
       sub(/^Detected RDP on[[:space:]]+/, "", message)
@@ -702,7 +711,8 @@ msf_finding_lines() {
       } else if (ip ~ /^[0-9.]+:[0-9]+$/) {
         port = ip; sub(/^.*:/, "", port); sub(/:[0-9]+$/, "", ip)
       }
-      if (port !~ /^[0-9]+$/ || (port + 0) < 1 || (port + 0) > 65535) return ""
+      if (port !~ /^[0-9]+$/ || (port + 0) < 1 || (port + 0) > 65535 || (default_port != "" && port + 0 != default_port + 0)) return ""
+      if (scope_file != "" && !(ip in allowed)) return ""
       if (ip ~ /:/) {
         if (ip !~ /^[0-9a-fA-F:]+$/ || ip !~ /:.*:/) return ""
         return "[" ip "]:" port
@@ -734,6 +744,7 @@ msf_finding_lines() {
       else if (kind ~ /^rdp_scanner_/) found = result && lower ~ /detected rdp on[[:space:]]+[^[:space:]]+/
       else if (kind ~ /^cve_2019_0708_bluekeep_/) found = good && lower ~ /(target (is|appears to be) vulnerable|bluekeep.*vulnerable|vulnerable.*bluekeep)/
       else if (kind ~ /^vnc_none_auth_/) found = good && lower ~ /(security types includes none|no authentication (required|needed)|authentication.*disabled|does not require authentication)/
+      else if (kind ~ /^nbname_udp_137[.]txt$/) found = good && lower ~ /\[[^][]+\][[:space:]]+os:(windows|unix)/ && lower ~ /mac:([0-9a-f][0-9a-f]:){5}[0-9a-f][0-9a-f]/
       else if (kind ~ /^snmp_login_/) found = good && lower ~ /login successful:/
       else if (kind ~ /^snmp_enumusers_/) found = good && lower ~ /found[[:space:]]+[1-9][0-9]*[[:space:]]+users:/
       else if (kind ~ /^snmp_enumshares_/) {
@@ -748,6 +759,10 @@ msf_finding_lines() {
       }
       if (found) {
         endpoint = endpoint_from_message(line)
+        if (kind ~ /^rdp_scanner_/) {
+          payload=line; sub(/^.*Detected RDP on[[:space:]]+/, "", payload)
+          if (endpoint != endpoint_from_message(payload)) next
+        }
         if (endpoint == "" && kind ~ /^snmp_enum(shares)?_/) endpoint = context
         if (endpoint == "") next
         if (mode == "endpoints") {
@@ -1081,6 +1096,7 @@ append_findings_summary_section() {
   append_finding_glob_item "$temp_file" "Review" "Remote Desktop Protocol Detection" "${MSF_RESULT_DIR}/rdp_scanner_tcp_*.txt"
   append_finding_glob_item "$temp_file" "Review" "Remote Desktop Protocol (RDP) BlueKeep Vulnerability" "${MSF_RESULT_DIR}/cve_2019_0708_bluekeep_tcp_*.txt"
   append_finding_glob_item "$temp_file" "Review" "Virtual Network Computing (VNC) None Authentication" "${MSF_RESULT_DIR}/vnc_none_auth_tcp_*.txt"
+  append_finding_glob_item "$temp_file" "Review" "NetBIOS Information Disclosure" "${MSF_RESULT_DIR}/nbname_udp_137.txt"
   append_finding_glob_item "$temp_file" "Review" "SNMP Default/Weak Community String" "${MSF_RESULT_DIR}/snmp_login_udp_*.txt"
   append_finding_glob_item "$temp_file" "Review" "SNMP Information Disclosure" "${MSF_RESULT_DIR}/snmp_enum_udp_*.txt"
   append_finding_glob_item "$temp_file" "Review" "SNMP Users Enumeration" "${MSF_RESULT_DIR}/snmp_enumusers_udp_*.txt"

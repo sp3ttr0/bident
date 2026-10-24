@@ -21,6 +21,13 @@ msf_absolute_path() {
   esac
 }
 
+msf_quote_value() {
+  local value="$1"
+  value="${value//\\/\\\\}"
+  value="${value//\"/\\\"}"
+  printf '"%s"' "$value"
+}
+
 msf_append_module() {
   local rc_file="$1"
   local module="$2"
@@ -28,29 +35,22 @@ msf_append_module() {
   local port="$4"
   local ssl_mode="$5"
   local targets_file="$6"
-  local slug
-  local result_file
-
-  slug="$(msf_module_slug "$module")"
-  result_file="${MSF_RESULT_DIR}/${slug}_${proto}_${port}.txt"
 
   {
-    printf 'spool %s\n' "$(msf_absolute_path "$result_file")"
     printf 'use %s\n' "$module"
     printf 'setg VERBOSE false\n'
     printf 'setg ConnectTimeout %s\n' "$MSF_CONNECT_TIMEOUT"
     printf 'setg TCPTimeout %s\n' "$MSF_TCP_TIMEOUT"
-    printf 'set RHOSTS file:%s\n' "$(msf_absolute_path "$targets_file")"
+    printf 'set RHOSTS %s\n' "$(msf_quote_value "file:$(msf_absolute_path "$targets_file")")"
     printf 'set RPORT %s\n' "$port"
     printf 'set THREADS %s\n' "$MSF_THREADS"
     if [[ "$module" == "auxiliary/scanner/snmp/snmp_login" ]]; then
-      printf 'set PASS_FILE %s\n' "$(msf_absolute_path "$SNMP_COMMUNITY_FILE")"
+      printf 'set PASS_FILE %s\n' "$(msf_quote_value "$(msf_absolute_path "$SNMP_COMMUNITY_FILE")")"
     fi
     if [[ "$ssl_mode" == true ]]; then
       printf 'set SSL true\n'
     fi
     printf 'run\n'
-    printf 'spool off\n'
     printf '\n'
   } >> "$rc_file"
 }
@@ -86,6 +86,9 @@ msf_add_port_modules() {
       ;;
     tcp/5800|tcp/5801|tcp/5900|tcp/5901)
       msf_append_module "$rc_file" auxiliary/scanner/vnc/vnc_none_auth "$proto" "$port" "$ssl_mode" "$targets_file"
+      ;;
+    udp/137)
+      msf_append_module "$rc_file" auxiliary/scanner/netbios/nbname "$proto" "$port" "$ssl_mode" "$targets_file"
       ;;
     udp/161)
       msf_append_module "$rc_file" auxiliary/scanner/snmp/snmp_login "$proto" "$port" "$ssl_mode" "$targets_file"
@@ -137,6 +140,8 @@ run_msf_auxiliary_checks() {
   local rc_module_counts=()
   local index=0
   local status=0
+  local module module_slug job_rc result_file
+  local result_files=()
 
   if [[ ! -s "$open_tsv" ]]; then
     return
@@ -160,7 +165,7 @@ run_msf_auxiliary_checks() {
     previous_key="$key"
 
     case "$key" in
-      tcp/21|tcp/25|tcp/465|tcp/587|tcp/139|tcp/445|tcp/3389|tcp/5800|tcp/5801|tcp/5900|tcp/5901|udp/161)
+      tcp/21|tcp/25|tcp/465|tcp/587|tcp/139|tcp/445|tcp/3389|tcp/5800|tcp/5801|tcp/5900|tcp/5901|udp/137|udp/161)
         target_file="${MSF_DIR}/targets_${proto}_${port}.txt"
         rc_file="${MSF_DIR}/metasploit_auxiliary_${proto}_${port}.rc"
         : > "$rc_file"
@@ -170,12 +175,22 @@ run_msf_auxiliary_checks() {
         fi
         port_module_count="$(grep -c '^run$' "$rc_file" 2>/dev/null || true)"
         if [[ "$port_module_count" -gt 0 ]]; then
+          # Each process owns one module, so stdout/stderr cannot cross modules.
+          while IFS= read -r module; do
+            module_slug="$(msf_module_slug "$module")"
+            job_rc="${MSF_DIR}/metasploit_auxiliary_${module_slug}_${proto}_${port}.rc"
+            result_file="${MSF_RESULT_DIR}/${module_slug}_${proto}_${port}.txt"
+            : > "$job_rc"
+            msf_append_module "$job_rc" "$module" "$proto" "$port" false "$target_file"
+            msf_append_exit "$job_rc"
+            printf 'resource %s\n' "$(msf_quote_value "$(msf_absolute_path "$job_rc")")" >> "$index_rc_file"
+            rc_files+=("$job_rc")
+            result_files+=("$result_file")
+            rc_labels+=("${proto}/${port} ${module_slug}")
+            rc_module_counts+=(1)
+            module_count=$((module_count + 1))
+          done < <(awk '/^use / {print $2}' "$rc_file")
           msf_append_exit "$rc_file"
-          printf 'resource %s\n' "$(msf_absolute_path "$rc_file")" >> "$index_rc_file"
-          rc_files+=("$rc_file")
-          rc_labels+=("${proto}/${port}")
-          rc_module_counts+=("$port_module_count")
-          module_count=$((module_count + port_module_count))
         else
           rm -f "$rc_file"
         fi
@@ -205,6 +220,7 @@ run_msf_auxiliary_checks() {
     printf '%sRunning Metasploit Auxiliary For:%s %s (%s module(s))\n' "$CLR_CYAN" "$CLR_RESET" "${rc_labels[$index]}" "$port_module_count"
     msf_print_modules_for_rc "$rc_file" "${rc_labels[$index]}"
     status=0
+    result_file="${result_files[$index]}"
     {
       printf '\n===== %s :: %s =====\n' "$(date '+%Y-%m-%d %H:%M:%S')" "${rc_labels[$index]}"
       if [[ "${MSF_TIMEOUT:-0}" =~ ^[0-9]+$ && "${MSF_TIMEOUT:-0}" -gt 0 ]] && command_available timeout; then
@@ -212,7 +228,9 @@ run_msf_auxiliary_checks() {
       else
         msfconsole -q -r "$rc_file"
       fi
-    } >> "${MSF_DIR}/msfconsole.log" 2>&1 || status=$?
+    } > "$result_file" 2>&1 || status=$?
+    printf '\nBident Metasploit process exit: %s\n' "$status" >> "$result_file"
+    cat "$result_file" >> "${MSF_DIR}/msfconsole.log"
     printf '%s\t%s\n' "${rc_labels[$index]}" "$status" >> "${MSF_DIR}/run_status.tsv"
     if [[ "$status" -ne 0 ]]; then
       if [[ "$status" -eq 143 ]]; then

@@ -283,3 +283,22 @@ them under **Core Artifacts → External Tool Failed / Incomplete Checks**.
 ssh-audit exit codes 2 and 3 indicate algorithm warnings/failures and remain
 eligible for findings. TLS and Metasploit keep their dedicated incomplete-check
 sections. Failed executions are excluded from credential/finding input files.
+
+Before host discovery (including resumed runs), Bident probes NetExec using
+`netexec smb -L` with no targets, and rpcdump using `impacket-rpcdump -h`.
+The NetExec probe loads the SMB implementation rather than exiting early at
+argument help. The probes run through the same user/privilege wrapper as the
+scan commands, with a 20-second timeout when GNU `timeout` is available.
+Broken or missing tools are marked incomplete, logged under Core Artifacts,
+and skipped for the rest of that run; the remaining scan continues. No package
+installation or dependency repair is performed automatically.
+
+Metasploit runs each configured module in a separate console process. Bident
+captures its complete stdout/stderr directly into `metasploit/results/`, even
+when it fails; capture no longer depends on Metasploit's spool command. The
+combined `metasploit/msfconsole.log` and per-module process exit status are also
+retained. Separate processes add console startup time but prevent output from
+one module being attributed to another. Result Host:Port must match the job's
+port and, when its target file is available, a host in that file. RDP's repeated
+endpoint must agree with its result prefix. Successful scanner observations
+qualify for the Findings Summary; failures and completion messages alone do not.

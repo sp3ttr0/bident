@@ -182,7 +182,9 @@ run_rpc_135_checks() {
     [[ -n "${target:-}" ]] || continue
     found=true
 
-    if command_available impacket-rpcdump; then
+    if [[ "${RPCDUMP_STARTUP_OK:-true}" == false ]]; then
+      printf '%sSkipping impacket-rpcdump For %s:%s: Incomplete startup check; see Core Artifacts.%s\n' "$CLR_YELLOW" "$target" "$port" "$CLR_RESET"
+    elif command_available impacket-rpcdump; then
       printf '%sChecking For Exposed RPC Services:%s %s:%s\n' "$CLR_CYAN" "$CLR_RESET" "$target" "$port"
       run_logged_check "Exposed RPC Services" ${TOOL_DIR}/s_rpcdump_135.txt impacket-rpcdump -p "$port" "$target" || true
     else
@@ -247,6 +249,11 @@ run_smb_external_checks() {
     return
   fi
 
+  if [[ "${NETEXEC_STARTUP_OK:-true}" == false ]]; then
+    rm -f "${TOOL_DIR}/nxc_smb_signing_false.txt" "${TOOL_DIR}/nxc_smbv1_true.txt"
+    printf '%sSkipping NetExec SMB Checks:%s Incomplete startup check; see Core Artifacts.\n' "$CLR_YELLOW" "$CLR_RESET"
+    return 0
+  fi
   if ! command_available netexec; then
     printf '%sSkipping NetExec SMB Checks:%s Command Not Found\n' "$CLR_YELLOW" "$CLR_RESET"
     return
