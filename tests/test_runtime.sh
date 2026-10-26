@@ -280,3 +280,154 @@ assert p < s.index('    start_responder')
 PYTEST
 printf 'Startup dependency checks passed.\n'
 )
+
+# NetExec input/output separation and sudo-created file permissions.
+printf 'Running: NetExec relay output permissions\n'
+(
+set -euo pipefail
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+source lib/config.sh
+source lib/utils.sh
+source lib/checks.sh
+source lib/report.sh
+fixture_dir="$(mktemp -d "${TMPDIR:-/tmp}/bident-smb-permissions.XXXXXX")"
+cd "$fixture_dir"
+mkdir -p bin "$TOOL_DIR" "$LOG_DIR"
+export SMB_CALLS="$fixture_dir/calls"
+cat > bin/netexec <<'MOCK'
+#!/bin/bash
+printf '%s\n' "$*" >> "$SMB_CALLS"
+if [[ "${SMB_SIMULATE_PERMISSION_ERROR:-false}" == true ]]; then
+ printf 'SMB 192.0.2.10 445 HOST [*] (signing:False) (SMBv1:True)\n'
+ printf "PermissionError: [Errno 13] Permission denied: 'relay-file'\n" >&2
+ exit 0
+fi
+[[ "$1" == smb ]] || exit 90
+if [[ "${2:-}" == --gen-relay-list ]]; then
+ relay="$3"; targets="$4"
+ [[ "$relay" != "$targets" && -r "$targets" && -w "$relay" ]] || exit 91
+ [[ "$(cat "$targets")" == 192.0.2.10 && ! -s "$relay" ]] || exit 92
+ printf '192.0.2.10\n' >> "$relay"
+fi
+printf 'SMB 192.0.2.10 445 HOST [*] (signing:False) (SMBv1:True)\n'
+MOCK
+chmod +x bin/netexec
+export PATH="$fixture_dir/bin:$PATH"
+printf '192.0.2.99\n' > "$LIVE_TARGETS_FILE"
+has_open_port() { return 0; }
+open_target_ports() { printf '192.0.2.10 445\n'; }
+run_with_timeout() { "$@"; }
+BIDENT_DROP_PRIVILEGES=true
+BIDENT_RUN_USER=scan-owner
+chown() { printf '%s\n' "$*" >> ownership.calls; }
+umask 077
+run_smb_external_checks > terminal.txt
+[[ "$(cat "$TOOL_DIR/targets_smb.txt")" == 192.0.2.10 ]] || exit 1
+[[ "$(cat "$TOOL_DIR/targets_smb_relay.txt")" == 192.0.2.10 ]] || exit 1
+grep -Fq 'scan-owner tool_results/targets_smb_relay.txt' ownership.calls || exit 1
+grep -Fq 'scan-owner tool_results/targets_smb.txt' ownership.calls || exit 1
+! grep -q targets_live.txt "$SMB_CALLS" || exit 1
+grep -q 'Found' terminal.txt || exit 1
+[[ ! -s "$LOG_DIR/external_status.tsv" ]] || exit 1
+export SMB_SIMULATE_PERMISSION_ERROR=true
+run_smb_external_checks > failed-terminal.txt
+grep -q Incomplete failed-terminal.txt || exit 1
+[[ ! -s "$TOOL_DIR/nxc_smb_signing_false.txt" && ! -s "$TOOL_DIR/nxc_smbv1_true.txt" ]] || exit 1
+append_external_failed_artifacts failed-artifacts.html
+grep -q PermissionError failed-artifacts.html || exit 1
+python3 - <<'PYTEST'
+from pathlib import Path
+import stat
+for name in ['targets_smb.txt','targets_smb_relay.txt']:
+ assert stat.S_IMODE(Path('tool_results',name).stat().st_mode)==0o600
+PYTEST
+printf 'NetExec relay permission checks passed.\n'
+)
+
+# Permission failures must be recognized consistently across external tools.
+printf 'Running: Cross-tool permission error handling\n'
+(
+set -euo pipefail
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+source lib/config.sh
+source lib/utils.sh
+source lib/checks.sh
+source lib/report.sh
+fixture_dir="$(mktemp -d "${TMPDIR:-/tmp}/bident-tool-access.XXXXXX")"
+cd "$fixture_dir"
+mkdir -p bin "$LOG_DIR" "$TOOL_DIR"
+cat > bin/mock-tool <<'MOCK'
+#!/bin/bash
+printf '%s\n' "${MOCK_ACCESS_OUTPUT}"
+exit 0
+MOCK
+cat > bin/timeout <<'MOCK'
+#!/bin/bash
+shift 2
+"$@"
+MOCK
+chmod +x bin/*
+export PATH="$fixture_dir/bin:$PATH"
+run_with_timeout() { "$@"; }
+run_unprivileged() { "$@"; }
+export MOCK_ACCESS_OUTPUT
+for message in 'PermissionError: [Errno 13] Permission denied' 'Operation not permitted' 'Read-only file system'; do
+ MOCK_ACCESS_OUTPUT="$message"
+ for tool in impacket-rpcdump rpcclient ldapsearch ssh-audit dig ike-scan; do
+  ! run_external_capture "$tool" captured mock-tool >> terminal.txt || exit 1
+ done
+done
+cp bin/mock-tool bin/testssl
+cp bin/mock-tool bin/sslscan
+MOCK_ACCESS_OUTPUT='PermissionError: cannot write cache'
+for tool in testssl sslscan; do
+ run_tls_target "$TOOL_DIR/${tool}_results.txt" "$tool" 192.0.2.1:443 >> terminal.txt
+ grep -q 'Bident TLS result: Incomplete' "$TOOL_DIR/${tool}_results.txt" || exit 1
+done
+# Prior hosts' permission errors must not poison the next TLS result.
+MOCK_ACCESS_OUTPUT='TLSv1.2 enabled'
+run_tls_target "$TOOL_DIR/sslscan_results.txt" sslscan 192.0.2.2:443 >> terminal.txt
+[[ "$(tail -1 "$LOG_DIR/tls_status.tsv" | cut -f3)" == 'Finished; review output' ]] || exit 1
+printf '[-] Permission denied @ rb_sysopen - module-output.txt\n' > msf.txt
+[[ -n "$(msf_failure_lines msf.txt)" ]] || exit 1
+append_external_failed_artifacts report.html
+grep -q 'Read-only file system' report.html || exit 1
+printf 'Cross-tool permission checks passed.\n'
+)
+
+# Explicit anonymous RPC access denial is a silent negative, not an error.
+printf 'Running: Anonymous RPC denied response\n'
+(
+set -euo pipefail
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+source lib/config.sh
+source lib/utils.sh
+source lib/checks.sh
+fixture_dir="$(mktemp -d "${TMPDIR:-/tmp}/bident-rpc-denied.XXXXXX")"
+cd "$fixture_dir"
+mkdir -p bin "$TOOL_DIR" "$LOG_DIR"
+cat > bin/rpcclient <<'MOCK'
+#!/bin/bash
+printf '%b\n' "$RPC_OUTPUT"
+exit "$RPC_EXIT"
+MOCK
+chmod +x bin/rpcclient
+export PATH="$fixture_dir/bin:$PATH"
+export RPC_OUTPUT='Cannot connect to server.  Error was NT_STATUS_ACCESS_DENIED' RPC_EXIT=1
+run_with_timeout() { "$@"; }
+run_logged_check 'Unauthenticated Remote Procedure Call' "$TOOL_DIR/rpc.txt" rpcclient -U '' -N -c enumprivs 192.0.2.1 > terminal.txt
+[[ ! -s terminal.txt && ! -s "$LOG_DIR/external_status.tsv" && ! -s "$TOOL_DIR/rpc.txt" ]] || exit 1
+RPC_OUTPUT='SeBackupPrivilege'; RPC_EXIT=0
+run_logged_check 'Unauthenticated Remote Procedure Call' "$TOOL_DIR/rpc.txt" rpcclient -U '' -N -c enumprivs 192.0.2.2 > found.txt
+grep -Fq 'Unauthenticated Remote Procedure Call Found' found.txt || exit 1
+RPC_OUTPUT='Connection refused'; RPC_EXIT=1
+run_logged_check 'Unauthenticated Remote Procedure Call' "$TOOL_DIR/rpc.txt" rpcclient -U '' -N -c enumprivs 192.0.2.3 > failed.txt
+grep -q Incomplete failed.txt || exit 1
+RPC_OUTPUT='Cannot connect to server.  Error was NT_STATUS_ACCESS_DENIED\nTraceback (most recent call last):\nImportError: broken'
+run_logged_check 'Unauthenticated Remote Procedure Call' "$TOOL_DIR/rpc.txt" rpcclient -U '' -N -c enumprivs 192.0.2.4 > mixed.txt
+grep -q Incomplete mixed.txt || exit 1
+RPC_OUTPUT='Cannot connect to server.  Error was NT_STATUS_ACCESS_DENIED'; RPC_EXIT=124
+run_logged_check 'Unauthenticated Remote Procedure Call' "$TOOL_DIR/rpc.txt" rpcclient -U '' -N -c enumprivs 192.0.2.5 > timeout.txt
+grep -q Incomplete timeout.txt || exit 1
+printf 'Anonymous RPC denial checks passed.\n'
+)

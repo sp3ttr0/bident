@@ -779,7 +779,7 @@ msf_failure_lines() {
     {
       lower = tolower($0)
       if (lower ~ /^[[:space:]]*resource[[:space:](]/ || lower ~ / => /) next
-      if (lower ~ /auxiliary (failed|aborted)|failed to (load|execute|run).*module|unknown command|uninitialized constant|call stack:|(^|[^a-z])(nameerror|nomethoderror|loaderror|syntaxerror|runtimeerror|optionvalidateerror|msf::optionvalidateerror)|exception|timed out/ ||
+      if (lower ~ /auxiliary (failed|aborted)|failed to (load|execute|run).*module|unknown command|uninitialized constant|call stack:|(^|[^a-z])(nameerror|nomethoderror|loaderror|syntaxerror|runtimeerror|optionvalidateerror|msf::optionvalidateerror)|exception|timed out|permission denied|operation not permitted|read-only file system|errno::eacces|errno::eperm/ ||
           (lower ~ /^\[-\]/ && lower ~ /unable to |connection (refused|reset)|unreachable|handshake failed|auth negotiation failed|parsing error|unknown error/)) print
     }
   '

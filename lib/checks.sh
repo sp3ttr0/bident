@@ -121,17 +121,36 @@ result_output_has_finding() {
   esac
 }
 
+external_output_has_error() {
+  local output="$1" start_line="${2:-1}"
+  # Consume the full stream so pipefail does not turn grep matches into
+  # false negatives when the producer receives SIGPIPE.
+  tail -n "+${start_line}" "$output" | grep -Ei 'Traceback \(most recent call last\)|AttributeError:|ImportError:|ModuleNotFoundError:|SyntaxError:|PermissionError:|permission denied|operation not permitted|read-only file system|exception while calling proto_flow|command not found|connection refused|connection reset|no route to host|timed out|no servers could be reached|network is unreachable|cannot connect|unable to connect|can.t contact LDAP server|^ldap_[a-z_]+:|^fatal([ :]|$)|^error([ :]|$)|status: (SERVFAIL|REFUSED|FORMERR)' > /dev/null
+}
+
+rpc_anonymous_access_denied() {
+  local output="$1"
+  local denial='^[[:space:]]*(Cannot connect to server[.][[:space:]]*Error was[[:space:]]+)?NT_STATUS_ACCESS_DENIED[[:space:]]*$'
+  # Recognize only a pure access-denied response. Mixed diagnostics, partial
+  # results and dependency failures must still follow incomplete handling.
+  grep -Ei "$denial" "$output" > /dev/null &&
+    ! grep -Eiv "$denial|^[[:space:]]*$" "$output" > /dev/null
+}
+
 run_external_capture() {
   local label="$1" output="$2" rc=0 status slug log_file tool
   shift 2
   tool="${1##*/}"
   run_with_timeout "$@" > "$output" 2>&1 || rc=$?
+  if [[ "$label" == 'Unauthenticated Remote Procedure Call' && "$tool" == rpcclient && ( "$rc" -eq 0 || "$rc" -eq 1 ) ]] && rpc_anonymous_access_denied "$output"; then
+    return 0
+  fi
   status=""
   if [[ "$tool" == ssh-audit && ( "$rc" -eq 2 || "$rc" -eq 3 ) ]]; then :
   elif [[ "$rc" -eq 124 || "$rc" -eq 137 ]]; then status="Incomplete: timeout or forced termination (exit ${rc})"
   elif [[ "$rc" -ne 0 ]]; then status="Incomplete: command failed (exit ${rc})"
   fi
-  if grep -Eiq 'Traceback \(most recent call last\)|AttributeError:|ImportError:|ModuleNotFoundError:|SyntaxError:|command not found|connection refused|connection reset|no route to host|timed out|no servers could be reached|network is unreachable|cannot connect|unable to connect|can.t contact LDAP server|^ldap_[a-z_]+:|^fatal([ :]|$)|^error([ :]|$)|status: (SERVFAIL|REFUSED|FORMERR)' "$output"; then
+  if external_output_has_error "$output"; then
     status='Incomplete: tool or connection error'
   fi
   if [[ -n "$status" ]]; then
@@ -172,7 +191,9 @@ run_logged_check() {
   elif [[ ! -s "$outfile" ]]; then
     rm -f "$outfile"
   fi
-  print_check_result "$label" "$temp_output"
+  if [[ "$label" != 'Unauthenticated Remote Procedure Call' ]] || result_output_has_finding "$label" "$temp_output"; then
+    print_check_result "$label" "$temp_output"
+  fi
   rm -f "$temp_output"
   return "$status"
 }
@@ -246,13 +267,16 @@ write_open_targets_file() {
 
 run_smb_external_checks() {
   local temp_output
+  local targets_file="${TOOL_DIR}/targets_smb.txt"
+  local relay_file="${TOOL_DIR}/targets_smb_relay.txt"
+  local data_file
 
   if ! has_open_port tcp 445; then
     return
   fi
 
-  write_open_targets_file tcp 445 ${TOOL_DIR}/targets_smb.txt
-  if [[ ! -s ${TOOL_DIR}/targets_smb.txt ]]; then
+  write_open_targets_file tcp 445 "$targets_file"
+  if [[ ! -s "$targets_file" ]]; then
     return
   fi
 
@@ -267,8 +291,17 @@ run_smb_external_checks() {
   fi
 
   rm -f "${TOOL_DIR}/nxc_smb_signing_false.txt" "${TOOL_DIR}/nxc_smbv1_true.txt"
-  run_logged_check "Misconfigured Server Message Block Signing" "${TOOL_DIR}/nxc_smb_signing_false.txt" netexec smb --gen-relay-list "${TOOL_DIR}/targets_smb.txt" "$LIVE_TARGETS_FILE"
-  run_logged_check "SMBv1 Enabled" "${TOOL_DIR}/nxc_smbv1_true.txt" netexec smb "$LIVE_TARGETS_FILE"
+  # Input scope and NetExec output must be separate. Prepare the relay file
+  # before dropping privileges; this also handles restrictive root umasks.
+  : > "$relay_file"
+  for data_file in "$targets_file" "$relay_file"; do
+    chmod 600 "$data_file"
+    if [[ "${BIDENT_DROP_PRIVILEGES:-false}" == true && -n "${BIDENT_RUN_USER:-}" ]]; then
+      chown "$BIDENT_RUN_USER" "$data_file"
+    fi
+  done
+  run_logged_check "Misconfigured Server Message Block Signing" "${TOOL_DIR}/nxc_smb_signing_false.txt" netexec smb --gen-relay-list "$relay_file" "$targets_file"
+  run_logged_check "SMBv1 Enabled" "${TOOL_DIR}/nxc_smbv1_true.txt" netexec smb "$targets_file"
 }
 
 run_ssh_audit_check() {
@@ -373,7 +406,7 @@ run_tls_target() {
   else
     run_unprivileged "$runner" --kill-after=10s "${TLS_TIMEOUT}s" "${tool_args[@]}" "$entry" >> "$outfile" 2>&1 || rc=$?
   fi
-  if [[ "$rc" -eq 0 ]] && tail -n "+${output_start}" "$outfile" | grep -Ei 'Traceback \(most recent call last\)|AttributeError:|ImportError:|ModuleNotFoundError:|^fatal([ :]|$)|^error([ :]|$)|connection refused|unable to connect' > /dev/null; then
+  if [[ "$rc" -eq 0 ]] && external_output_has_error "$outfile" "$output_start"; then
     status='Incomplete: tool or connection error'
   fi
   if [[ -z "${status:-}" ]]; then
