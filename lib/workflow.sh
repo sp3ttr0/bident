@@ -345,7 +345,7 @@ main() {
           ;;
         udp)
           start_screen_scan "udp" \
-            "${PRIVILEGED_CMD_PREFIX} nmap -n -sUV -v --reason --max-rtt-timeout=100ms --max-retries=0 --min-rate ${MIN_RATE} -${TIMING} --script-timeout ${SCRIPT_TIMEOUT} ${PORT_FLAG} -oA ${SCAN_DIR}/udp -iL ${LIVE_TARGETS_FILE} --open"
+            "${PRIVILEGED_CMD_PREFIX} nmap -n -sU -v --reason --max-rtt-timeout=100ms --max-retries=0 --min-rate ${MIN_RATE} -${TIMING} --script-timeout ${SCRIPT_TIMEOUT} ${PORT_FLAG} -oA ${SCAN_DIR}/udp -iL ${LIVE_TARGETS_FILE} --open"
           ;;
       esac
     done
@@ -482,6 +482,7 @@ main() {
   
   finish_scan_timing
   print_section 'Report Generation'
+  generate_services_report
   generate_html_report
   generate_json_summary
   allow_unprivileged_output_writes

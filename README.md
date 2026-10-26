@@ -57,6 +57,8 @@ Use `./bident.sh --help` for full usage. The SNMP community list is `wordlists/s
 
 ## Scan Behavior
 
+- The UDP base scan uses `-sU` without version detection. UDP NSE output remains in the report evidence and does not populate the Services table. The Services table shows only UDP base-scan information; missing details remain blank.
+
 - NetExec SMB and rpcdump dependencies are checked silently before discovery. Failures are reported and the affected tool is skipped.
 - SSL/TLS checks cover **443 and 8443**, after NSE and before Metasploit. testssl is primary, sslscan cross-checks, and SSL/TLS NSE runs only when neither is installed.
 - TLS tools have a fixed **30-minute timeout per tool per Host:Port**, requiring GNU `timeout` or `gtimeout`. This is independent of `--tool-timeout`.
