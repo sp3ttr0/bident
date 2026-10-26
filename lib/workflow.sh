@@ -345,7 +345,7 @@ main() {
           ;;
         udp)
           start_screen_scan "udp" \
-            "${PRIVILEGED_CMD_PREFIX} nmap -n -sUV --version-intensity 1 -v --reason --max-rtt-timeout=100ms --max-retries=0 --min-rate ${MIN_RATE} -${TIMING} --script-timeout ${SCRIPT_TIMEOUT} ${PORT_FLAG} -oA ${SCAN_DIR}/udp -iL ${LIVE_TARGETS_FILE} --open"
+            "${PRIVILEGED_CMD_PREFIX} nmap -n -sUV -v --reason --max-rtt-timeout=100ms --max-retries=0 --min-rate ${MIN_RATE} -${TIMING} --script-timeout ${SCRIPT_TIMEOUT} ${PORT_FLAG} -oA ${SCAN_DIR}/udp -iL ${LIVE_TARGETS_FILE} --open"
           ;;
       esac
     done
