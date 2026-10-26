@@ -80,4 +80,18 @@ print_progress_bar() { :; }
 run_ssh_audit_check > ssh-terminal.txt
 ! grep -q 'No Weak SSH Ciphers Found' ssh-terminal.txt || exit 1
 grep -q 'Incomplete' ssh-terminal.txt || exit 1
+# Simulate sudo ownership handoff without requiring root in the test suite.
+BIDENT_DROP_PRIVILEGES=true
+BIDENT_RUN_USER=scan-owner
+chown() { printf '%s\n' "$*" >> ownership.calls; }
+MOCK_EXIT=1; MOCK_OUTPUT='Traceback (most recent call last):\nAttributeError: broken dependency'
+! run_external_capture 'Ownership regression' captured mock-tool > ownership-terminal || exit 1
+grep -q '^scan-owner logs/external_Ownership_regression' ownership.calls || exit 1
+python3 - <<'PYTEST'
+from pathlib import Path
+import stat
+files=list(Path('logs').glob('external_Ownership_regression.*'))
+assert len(files)==1
+assert stat.S_IMODE(files[0].stat().st_mode)==0o600
+PYTEST
 printf 'External failure handling checks passed.\n'

@@ -2177,6 +2177,10 @@ HTML
     printf '    </div>\n'
     printf '    <button class="theme-toggle" type="button" id="themeToggle" aria-label="Toggle dark mode" title="Toggle theme">☾</button>\n'
     printf '  </header>\n'
+    printf '  <section class="notice">\n'
+    printf '    <strong>Disclaimer</strong>\n'
+    printf '    <p>Some findings may be false positives and should be manually validated before action is taken. Use this tool only for authorized and legal security testing. The owner of this script is not liable for illegal, unauthorized, or harmful use.</p>\n'
+    printf '  </section>\n'
     printf '  <section class="notice" aria-label="Scan timing">\n'
     printf '    <strong>Scan Timing</strong>\n'
     printf '    <p>Start Time: %s</p>\n' "$(html_escape_text "${SCAN_STARTED_AT:-Unavailable}")"
@@ -2303,10 +2307,6 @@ HTML
   fi
   {
     printf '  </details>\n'
-    printf '  <section class="notice">\n'
-    printf '    <strong>Disclaimer</strong>\n'
-    printf '    <p>Some findings may be false positives and should be manually validated before action is taken. Use this tool only for authorized and legal security testing. The owner of this script is not liable for illegal, unauthorized, or harmful use.</p>\n'
-    printf '  </section>\n'
     printf '  <footer class="report-footer">\n'
     printf '    <span><strong>Bident</strong> Network VAPT Toolkit</span>\n'
     printf '    <span>Generated %s</span>\n' "$(html_escape_text "$generated_at")"

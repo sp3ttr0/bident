@@ -247,9 +247,34 @@ prepare_privileged_execution() {
 }
 
 allow_unprivileged_output_writes() {
-  if [[ "$BIDENT_DROP_PRIVILEGES" == true && -n "${BIDENT_RUN_USER:-}" && -n "${RESULTS_DIR:-}" && -d "$RESULTS_DIR" ]]; then
-    chown -R "$BIDENT_RUN_USER" "$RESULTS_DIR" 2>/dev/null || true
+  local failed=false
+  if [[ "${BIDENT_DROP_PRIVILEGES:-false}" == true && -n "${BIDENT_RUN_USER:-}" && -n "${RESULTS_DIR:-}" && -d "$RESULTS_DIR" ]]; then
+    # Do not follow symlinks outside the results folder. Keep existing group
+    # and other permissions; only grant the owning user the required access.
+    find -P "$RESULTS_DIR" -exec chown -h "$BIDENT_RUN_USER" {} + || failed=true
+    find -P "$RESULTS_DIR" -type d -exec chmod u+rwx {} + || failed=true
+    find -P "$RESULTS_DIR" -type f -exec chmod u+rw {} + || failed=true
+    if [[ "$failed" == true ]]; then
+      printf '%sWarning: Could not fully restore results access for %s: %s%s\n' "$CLR_YELLOW" "$BIDENT_RUN_USER" "$RESULTS_DIR" "$CLR_RESET" >&2
+      return 1
+    fi
   fi
+  return 0
+}
+
+finalize_results_on_exit() {
+  local exit_status="$1" session_name
+  if [[ "$exit_status" -ne 0 ]]; then
+    # Stop only scanner sessions started by this run before restoring access.
+    for session_name in "${BIDENT_OWNED_SCANS[@]-}"; do
+      [[ -n "$session_name" ]] || continue
+      if screen_session_exists "$session_name"; then screen -S "$session_name" -X quit || true; fi
+    done
+  fi
+  if [[ "${RESULTS_PERMISSIONS_FINALIZED:-false}" != true ]]; then
+    allow_unprivileged_output_writes || true
+  fi
+  return 0
 }
 
 count_files_in_dir() {

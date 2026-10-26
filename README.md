@@ -302,3 +302,11 @@ one module being attributed to another. Result Host:Port must match the job's
 port and, when its target file is available, a host in that file. RDP's repeated
 endpoint must agree with its result prefix. Successful scanner observations
 qualify for the Findings Summary; failures and completion messages alone do not.
+
+When launched with sudo from a normal user account, Bident returns ownership
+of the whole results tree to that user and grants owner read/write access to
+files and owner read/write/traversal access to directories. Cleanup also runs
+on cancellation, termination, early completion, and ordinary errors. Private
+logs keep their restrictive group/other permissions. Symlinks are not followed
+outside the results tree. A forced SIGKILL or machine shutdown cannot run exit
+cleanup; existing interrupted folders may still require manual ownership repair.

@@ -222,6 +222,11 @@ main() {
   fi
   
   cd "$RESULTS_DIR"
+  RESULTS_DIR="$PWD"
+  RESULTS_PERMISSIONS_FINALIZED=false
+  BIDENT_OWNED_SCANS=()
+  trap 'finalize_results_on_exit "$?"' EXIT
+  trap 'exit 143' TERM
   if [[ -z "$RESUME_DIR" ]]; then
     SCOPE_FILE="$SCOPE_BASENAME"
   fi
@@ -280,6 +285,8 @@ main() {
     printf '%sNothing More To Scan. Exiting.%s\n' "$CLR_YELLOW" "$CLR_RESET"
     finish_scan_timing
     generate_html_report
+    allow_unprivileged_output_writes
+    RESULTS_PERMISSIONS_FINALIZED=true
     print_scan_timing
     print_completion
     exit 0
@@ -477,6 +484,8 @@ main() {
   print_section 'Report Generation'
   generate_html_report
   generate_json_summary
+  allow_unprivileged_output_writes
+  RESULTS_PERMISSIONS_FINALIZED=true
   
   print_final_summary
   print_scan_timing

@@ -42,6 +42,7 @@ start_screen_scan() {
 
   mkdir -p "$LOG_DIR"
   screen -L -Logfile "${LOG_DIR}/${session_name}.screen.log" -dmS "$session_name" bash -lc "$command_text"
+  BIDENT_OWNED_SCANS+=("$session_name")
   printf '%sStarted Screen Session:%s %s\n' "$CLR_GREEN" "$CLR_RESET" "$session_name"
   printf '%sScreen Log File:%s %s/%s.screen.log\n' "$CLR_CYAN" "$CLR_RESET" "$LOG_DIR" "$session_name"
 }

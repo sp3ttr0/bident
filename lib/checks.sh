@@ -140,6 +140,13 @@ run_external_capture() {
     log_file="$(mktemp "${LOG_DIR}/external_${slug}.XXXXXX")"
     append_command_header "$log_file" "$@"
     cat "$output" >> "$log_file"
+    # mktemp creates mode 0600; retain privacy, but return ownership to the
+    # invoking user immediately so even interrupted scans remain readable.
+    if [[ "${BIDENT_DROP_PRIVILEGES:-false}" == true && -n "${BIDENT_RUN_USER:-}" ]]; then
+      if ! chown "$BIDENT_RUN_USER" "$log_file"; then
+        printf '%sWarning: Could not return log ownership: %s%s\n' "$CLR_YELLOW" "$log_file" "$CLR_RESET" >&2
+      fi
+    fi
     printf '%s\t%s\t%s\t%s\n' "$label" "$status" "$rc" "$log_file" >> "${LOG_DIR}/external_status.tsv"
     printf '%s%s: %s. Details: %s%s\n' "$CLR_YELLOW" "$label" "$status" "$log_file" "$CLR_RESET"
     return 1
