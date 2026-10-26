@@ -84,6 +84,10 @@ Failed external, TLS, and Metasploit checks appear under **Core Artifacts**. Ful
 
 When launched with sudo, results ownership and owner access are restored to the invoking user on completion, cancellation, and ordinary errors. Forced termination or shutdown may still require manual permission repair.
 
+## Tests
+
+Run `bash tests/run.sh` to check findings/credentials, Metasploit, reports/permissions, runtime handling, TLS, and clipboard actions. Tests use synthetic output and mocked tools; they do not run live scans. Requires Bash, Python 3, Node.js, and standard Unix utilities. Each shell suite can also run individually.
+
 ## Git Hygiene
 
 Keep source, documentation, `tests/` with synthetic data, and the bundled wordlist in Git. Never commit real scan results, client scope files, credentials, or logs. Standard outputs are ignored; add custom output folders to `.gitignore` and review `git status --short` and `git diff --cached` before committing. Ignore rules do not protect already tracked files.
