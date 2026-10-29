@@ -479,7 +479,7 @@ append_ssh_weak_cipher_finding() {
   target_count="$(printf '%s\n' "$rows" | awk 'END {print NR}')"
   {
     printf '    <li><details class="finding-panel">\n'
-    printf '      <summary><span class="finding-severity">Review</span><div><strong>Weak SSH Ciphers</strong><span>%s affected host(s)</span></div></summary>\n' "$target_count"
+    printf '      <summary><div><strong>Weak SSH Ciphers</strong><span>%s affected host(s)</span></div></summary>\n' "$target_count"
     printf '      <div data-affected-targets>\n'
     print_copy_targets_button
     printf '      <div class="service-table-wrap"><table class="service-table"><thead><tr><th>Host:Port</th><th>Weak/Deprecated Ciphers Found:</th></tr></thead><tbody>\n'
@@ -489,7 +489,7 @@ append_ssh_weak_cipher_finding() {
       printf '</td></tr>\n' 
     done <<< "$rows"
     printf '      </tbody></table></div></div>\n'
-    printf '      <details class="artifact"><summary>SSH Audit Evidence</summary><pre class="finding-evidence">'
+    printf '      <details class="artifact"><summary>Full Evidence — %s</summary><pre class="finding-evidence">' "$(html_escape_text "$source_file")"
     html_escape_file_preview "$source_file"
     printf '</pre></details>\n'
     printf '    </details></li>\n'
@@ -603,8 +603,12 @@ tool_finding_endpoints() {
   ' | if [[ "$mode" == rows ]]; then cat; else verified_ip_port_lines; fi
 }
 
+print_copy_icon() {
+  printf '<svg class="copy-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></svg>'
+}
+
 print_copy_targets_button() {
-  printf '      <div class="copy-targets-toolbar"><button type="button" class="copy-targets">Copy hosts</button><span class="copy-targets-status muted" role="status" aria-live="polite"></span></div>\n'
+  printf '      <div class="copy-targets-toolbar"><button type="button" class="copy-targets">Copy hosts %s</button><span class="copy-targets-status muted" role="status" aria-live="polite"></span></div>\n' "$(print_copy_icon)"
 }
 
 append_affected_endpoint_list() {
@@ -633,25 +637,15 @@ append_tls_cipher_table() {
   printf '      </tbody></table></div></div>\n'
 }
 
-append_endpoint_evidence_table() {
-  local rows_file="$1" endpoints="$2" escaped="${3:-false}" cipher_column="${4:-false}"
-  local endpoint detail source evidence
-  printf '      <details class="artifact"><summary>Evidence</summary>\n'
-  printf '      <div class="service-table-wrap"><table class="service-table"><thead><tr><th>Host:Port</th>'
-  if [[ "$cipher_column" == true ]]; then printf '<th>Weak Cipher / Reported Category</th>'; fi
-  printf '<th>Verified Output</th><th>Source</th></tr></thead><tbody>\n'
-  while IFS=$'\034' read -r endpoint detail source evidence; do
-    printf '%s\n' "$endpoints" | grep -Fxq -- "$endpoint" || continue
-    printf '        <tr><td>%s</td>' "$(html_escape_text "$endpoint")"
-    if [[ "$cipher_column" == true ]]; then printf '<td>%s</td>' "$(html_escape_text "$detail")"; fi
-    if [[ "$escaped" == true ]]; then printf '<td>%s</td>' "$evidence"
-    else printf '<td>%s</td>' "$(html_escape_text "$evidence")"; fi
-    printf '<td>%s</td></tr>\n' "$(html_escape_text "$source")"
-  done < "$rows_file"
-  printf '      </tbody></table></div></details>\n'
+append_finding_full_evidence() {
+  local rows_file="$1" source matches
   while IFS= read -r source; do
     [[ -s "$source" ]] || continue
-    printf '<details class="artifact"><summary>Full Evidence — %s</summary><pre class="finding-evidence">' "$(html_escape_text "$source")"
+    matches="$(awk -F '\034' -v source="$source" -v endpoints="$(printf '%s' "$2" | tr '\n' ',')" '
+      BEGIN {split(endpoints, hosts, ","); for (i in hosts) valid[hosts[i]]=1}
+      {path=$3; sub(/:[0-9]+$/, "", path); if (path==source && ($1 in valid) && !seen[$3]++) refs=refs (refs=="" ? "" : ", ") $3}
+      END {print refs}' "$rows_file")"
+    printf '<details class="artifact"><summary>Full Evidence — %s</summary><p class="muted evidence-source">Matched source lines: %s</p><pre class="finding-evidence">' "$(html_escape_text "$source")" "$(html_escape_text "$matches")"
     html_escape_file "$source"
     printf '</pre></details>\n'
   done < <(awk -F '\034' '{source=$3; sub(/:[0-9]+$/, "", source); if (!seen[source]++) print source}' "$rows_file")
@@ -673,7 +667,7 @@ append_finding_item() {
 
   {
     printf '    <li><details class="finding-panel">\n'
-    printf '      <summary><span class="finding-severity">%s</span><div><strong>%s</strong>\n' "$(html_escape_text "$severity")" "$(html_escape_text "$title")"
+    printf '      <summary><div><strong>%s</strong>\n' "$(html_escape_text "$title")"
     printf '        <span>%s affected host(s)</span>\n' "$(printf '%s\n' "$endpoints" | awk 'NF {n++} END {print n+0}')"
     printf '      </div></summary>\n'
     append_affected_endpoint_list "$endpoints"
@@ -681,7 +675,7 @@ append_finding_item() {
     while IFS=$'\034' read -r endpoint evidence_line evidence_text; do
       printf '%s\034\034%s:%s\034%s\n' "$endpoint" "$source_file" "$evidence_line" "$evidence_text" >> "$evidence_rows"
     done < <(tool_finding_endpoints "$title" "$source_file" rows)
-    append_endpoint_evidence_table "$evidence_rows" "$endpoints" true
+    append_finding_full_evidence "$evidence_rows" "$endpoints" true
     rm -f "$evidence_rows"
     printf '    </details></li>\n'
   } >> "$outfile"
@@ -880,7 +874,7 @@ append_finding_glob_item() {
 
   {
     printf '    <li><details class="finding-panel">\n'
-    printf '      <summary><span class="finding-severity">%s</span><div><strong>%s</strong>\n' "$(html_escape_text "$severity")" "$(html_escape_text "$title")"
+    printf '      <summary><div><strong>%s</strong>\n' "$(html_escape_text "$title")"
     printf '        <span>%s affected host(s)</span>\n' "$(printf '%s\n' "$endpoints" | awk 'NF {n++} END {print n+0}')"
     printf '      </div></summary>\n'
     append_affected_endpoint_list "$endpoints"
@@ -890,7 +884,7 @@ append_finding_glob_item() {
         printf '%s\034\034%s:%s\034%s\n' "$endpoint" "$source_file" "$evidence_line" "$evidence_text" >> "$evidence_rows"
       done < <(finding_source_lines "$source_file" rows)
     done
-    append_endpoint_evidence_table "$evidence_rows" "$endpoints" true
+    append_finding_full_evidence "$evidence_rows" "$endpoints" true
     rm -f "$evidence_rows"
     printf '    </details></li>\n'
   } >> "$outfile"
@@ -1057,7 +1051,7 @@ append_tls_findings_summary() {
     esac
     {
       printf '    <li><details class="finding-panel">\n'
-      printf '      <summary><span class="finding-severity">Review</span><div><strong>%s</strong><span>%s affected host(s)</span></div></summary>\n' "$(html_escape_text "$title")" "$(printf '%s\n' "$endpoints" | awk 'END {print NR}')"
+      printf '      <summary><div><strong>%s</strong><span>%s affected host(s)</span></div></summary>\n' "$(html_escape_text "$title")" "$(printf '%s\n' "$endpoints" | awk 'END {print NR}')"
       if [[ "$id" != 6 ]]; then append_affected_endpoint_list "$endpoints"; fi
       evidence_rows="$(mktemp "${TMPDIR:-/tmp}/bident_tls_evidence.XXXXXX")"
       while IFS=$'\034' read -r known endpoint source_line evidence cipher_detail; do
@@ -1066,13 +1060,20 @@ append_tls_findings_summary() {
       done < "$rows_file"
       if [[ "$id" == 6 ]]; then
         append_tls_cipher_table "$evidence_rows" "$endpoints"
-        append_endpoint_evidence_table "$evidence_rows" "$endpoints" false true
-      else append_endpoint_evidence_table "$evidence_rows" "$endpoints"; fi
+        append_finding_full_evidence "$evidence_rows" "$endpoints" false true
+      else append_finding_full_evidence "$evidence_rows" "$endpoints"; fi
       rm -f "$evidence_rows"
       printf '    </details></li>\n'
     } >> "$outfile"
   done
   rm -f "$rows_file"
+}
+
+print_report_section_heading() {
+  local title="$1" expand_id="$2" collapse_id="$3" status_id="$4" scope="$5" count="${6:-0}"
+  printf '<div class="section-heading"><h2>%s <span class="section-count" aria-label="%s %s">%s</span></h2><nav class="report-controls" aria-label="%s controls">' "$(html_escape_text "$title")" "$count" "$scope" "$count" "$(html_escape_text "$scope")"
+  printf '<button class="report-toggle" id="%s" type="button" title="Expand all %s" aria-label="Expand all %s"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m8 7 4-4 4 4M4 10h16M4 14h16m-12 3 4 4 4-4"/></svg></button>' "$expand_id" "$scope" "$scope"
+  printf '<button class="report-toggle" id="%s" type="button" title="Collapse all %s" aria-label="Collapse all %s"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m8 3 4 4 4-4M4 10h16M4 14h16m-12 7 4-4 4 4"/></svg></button></nav></div><span class="report-toggle-status" id="%s" role="status" aria-live="polite"></span>\n' "$collapse_id" "$scope" "$scope" "$status_id"
 }
 
 append_findings_summary_section() {
@@ -1103,7 +1104,9 @@ append_findings_summary_section() {
   append_finding_glob_item "$temp_file" "Review" "SNMP Shares Enumeration" "${MSF_RESULT_DIR}/snmp_enumshares_udp_*.txt"
 
   {
-    printf '  <h2>Findings Summary</h2>\n'
+    printf '  <section class="report-section" id="findingsSummary" aria-label="Findings Summary">\n'
+    print_report_section_heading 'Findings Summary' expandAll collapseAll reportToggleStatus findings "$(awk '/^[[:space:]]*<li><details class="finding-panel">/ {n++} END {print n+0}' "$temp_file")"
+    printf '  <p class="muted">Review each finding and its full evidence carefully before taking action. Automated results may contain false positives.</p>\n'
     if [[ -s "$temp_file" ]]; then
       printf '  <ul class="finding-list">\n'
       cat "$temp_file"
@@ -1111,6 +1114,7 @@ append_findings_summary_section() {
     else
       printf '  <div class="empty">No targeted findings were written by follow-up checks.</div>\n'
     fi
+    printf '  </section>\n'
   } >> "$outfile"
 
   rm -f "$temp_file"
@@ -1165,7 +1169,7 @@ append_credential_summary_section() {
       if [[ -n "$endpoint" ]]; then endpoint_verified=true; else endpoint='Not identified'; fi
       {
         printf '    <li data-credential-entry><details class="finding-panel">\n'
-        printf '      <summary><span class="finding-severity">Review</span><div><strong class="credential-value">%s</strong><span>%s</span><p>%s:%s</p></div></summary>\n' \
+        printf '      <summary><div><strong class="credential-value">%s</strong><span>%s</span><p>%s:%s</p></div></summary>\n' \
           "$(html_escape_text "$display_value")" \
           "$(html_escape_text "$file_label")" \
           "$(html_escape_text "$file")" \
@@ -1178,9 +1182,11 @@ append_credential_summary_section() {
   done
 
   {
-    printf '  <section data-credential-copy><h2>Possible Usernames / Credentials</h2>\n'
+    printf '  <section class="report-section" data-credential-copy>\n'
+    print_report_section_heading 'Discovered Usernames & Credentials' expandCredentials collapseCredentials credentialToggleStatus credentials "$(awk '/<li data-credential-entry>/ {n++} END {print n+0}' "$temp_file")"
+    printf '  <p class="muted">Review each entry, its Host:Port, and the supporting output carefully. Enumerated usernames alone do not confirm valid credentials.</p>\n'
     if [[ -s "$temp_file" ]]; then
-      printf '  <div class="copy-targets-toolbar"><button class="copy-targets copy-credentials" type="button" data-copy-mode="entries">Copy entries with Host:Port</button><button class="copy-targets copy-credentials" type="button" data-copy-mode="targets">Copy Host:Port only</button><span class="copy-targets-status muted" role="status" aria-live="polite"></span></div>\n'
+      printf '  <div class="copy-targets-toolbar"><button class="copy-targets copy-credentials" type="button" data-copy-mode="entries" title="Copy displayed username/credential entries with Host:Port, separated by tabs">Copy Credentials %s</button><button class="copy-targets copy-credentials" type="button" data-copy-mode="targets" title="Copy unique verified Host:Port values only">Copy Hosts %s</button><span class="copy-targets-status muted" role="status" aria-live="polite"></span></div>\n' "$(print_copy_icon)" "$(print_copy_icon)"
       printf '  <ul class="finding-list credential-list">\n'
       cat "$temp_file"
       printf '  </ul>\n'
@@ -1496,7 +1502,7 @@ generate_html_report() {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Bident Scan Report</title>
+  <title>Bident Network Security Assessment Report</title>
   <style>
     :root {
       color-scheme: light;
@@ -1551,7 +1557,7 @@ generate_html_report() {
       margin: 0;
     }
     h1 {
-      font-size: 30px;
+      font-size: clamp(22px, 2.4vw, 28px);
       margin-bottom: 6px;
     }
     h2 {
@@ -1596,7 +1602,12 @@ generate_html_report() {
       padding: 14px;
       margin: 0;
     }
-    .copy-targets {
+    .copy-icon { width: 17px; height: 17px; flex: 0 0 17px; }
+    .copy-targets, .report-toggle {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
       background: var(--panel);
       border: 1px solid var(--accent);
       border-radius: 6px;
@@ -1607,7 +1618,9 @@ generate_html_report() {
       padding: 6px 12px;
     }
     .copy-targets:hover,
-    .copy-targets:focus-visible {
+    .copy-targets:focus-visible,
+    .report-toggle:hover,
+    .report-toggle:focus-visible {
       background: color-mix(in srgb, var(--accent) 12%, var(--panel));
       outline: 2px solid var(--accent);
       outline-offset: 2px;
@@ -1653,9 +1666,116 @@ generate_html_report() {
       display: block;
       margin-bottom: 4px;
     }
+    .notice .disclaimer-heading { display: flex; align-items: center; gap: 8px; }
+    .disclaimer-icon { width: 18px; height: 18px; flex: 0 0 18px; color: var(--accent-3); }
+    .notice.disclaimer {
+      background: #2e2514;
+      border: 1px solid #b88320;
+      border-left-width: 5px;
+      color: #ffdda6;
+    }
+    .notice.disclaimer p, .notice.disclaimer .disclaimer-icon { color: inherit; }
     .notice p {
       margin: 0;
       color: var(--muted);
+    }
+    .notice[aria-label="Scan details"] {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      box-shadow: none;
+    }
+    .notice[aria-label="Scan details"] h2 { color: var(--text); }
+    .notice[aria-label="Scan details"] .metric {
+      background: transparent;
+      border: 1px solid var(--line);
+      box-shadow: none;
+    }
+    .notice[aria-label="Scan details"] .metric-time strong {
+      font-size: 15px;
+      line-height: 1.5;
+      overflow-wrap: anywhere;
+    }
+    .notice[aria-label="Scan details"] .metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .notice[aria-label="Scan details"] .metric { min-width: 0; }
+    @media (max-width: 650px) {
+      .notice[aria-label="Scan details"] .metrics { gap: 8px; }
+      .notice[aria-label="Scan details"] .metric { padding: 10px 8px; }
+      .notice[aria-label="Scan details"] .metric-time strong { font-size: 12px; }
+      .notice[aria-label="Scan details"] .metric span { font-size: 11px; overflow-wrap: anywhere; }
+    }
+    .notice[aria-label="Scan details"] .metric > span { display: block; margin-bottom: 8px; }
+    details > summary {
+      list-style: none;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    details > summary::-webkit-details-marker { display: none; }
+    details > summary::marker { content: ""; }
+    details > summary::after {
+      content: "+";
+      color: var(--accent);
+      font: 700 20px/1 monospace;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 20px;
+      height: 20px;
+      flex: 0 0 20px;
+      margin-left: auto;
+      align-self: center;
+    }
+    details[open] > summary::after { content: "−"; }
+    .port-summary > .port-title { flex: 1; }
+    .section-heading {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin: 24px 0 12px;
+    }
+    .section-heading h2 { margin: 0; min-width: 0; }
+    .section-count { color: var(--muted); font-size: 0.8em; font-weight: 600; white-space: nowrap; margin-left: 6px; }
+    #findingsSummary .section-count,
+    [data-credential-copy] .section-count {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+      box-sizing: border-box;
+      padding: 0;
+      border: 1px solid var(--line);
+      border-radius: 50%;
+      background: var(--chip);
+      color: var(--chip-text);
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.3;
+      vertical-align: middle;
+      position: relative;
+      top: -2px;
+    }
+    .report-controls { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+    .report-toggle {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 42px;
+      height: 42px;
+      padding: 9px;
+      border-color: var(--line);
+      border-radius: 12px;
+      color: var(--text);
+    }
+    .report-toggle svg { width: 22px; height: 22px; }
+    .report-toggle-status {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
     }
     .report-footer {
       border-top: 1px solid var(--line);
@@ -1663,7 +1783,10 @@ generate_html_report() {
       display: flex;
       flex-wrap: wrap;
       gap: 8px 16px;
-      justify-content: space-between;
+      justify-content: center;
+      text-align: center;
+      flex-direction: column;
+      align-items: center;
       margin-top: 28px;
       padding-top: 14px;
       font-size: 12px;
@@ -1766,16 +1889,7 @@ generate_html_report() {
       color: var(--muted);
       margin: 5px 0 0;
     }
-    .finding-severity {
-      background: var(--chip);
-      border-radius: 999px;
-      color: var(--chip-text) !important;
-      flex: 0 0 auto;
-      font-size: 11px !important;
-      font-weight: 800;
-      padding: 2px 8px;
-      text-transform: uppercase;
-    }
+
     .finding-panel > summary > div {
       min-width: 0;
       flex: 1;
@@ -1859,7 +1973,7 @@ generate_html_report() {
       white-space: pre-wrap;
     }
     .port-card {
-      margin-bottom: 8px;
+      margin-bottom: 5px;
       overflow: hidden;
     }
     .open-ports-wrap {
@@ -1877,8 +1991,8 @@ generate_html_report() {
       gap: 10px;
       cursor: pointer;
       list-style: none;
-      padding: 10px 16px;
-      min-height: 44px;
+      padding: 7px 12px;
+      min-height: 32px;
       border-left: 4px solid var(--accent);
       transition: background 160ms ease, border-color 160ms ease;
     }
@@ -1890,32 +2004,13 @@ generate_html_report() {
       align-items: center;
       gap: 9px;
     }
-    .port-chevron {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 20px;
-      height: 20px;
-      border-radius: 999px;
-      background: var(--chip);
-      color: var(--chip-text);
-      font-size: 15px;
-      font-weight: 900;
-      line-height: 1;
-      transition: transform 160ms ease, background 160ms ease;
-    }
     .port-summary strong {
       display: block;
-      font-size: 15px;
+      font-size: 13px;
       line-height: 1.2;
     }
     .port-card[open] .port-summary {
       background: color-mix(in srgb, var(--accent) 10%, transparent);
-    }
-    .port-card[open] .port-chevron {
-      transform: rotate(90deg);
-      background: var(--accent);
-      color: #06111f;
     }
     .badge {
       display: inline-flex;
@@ -2063,16 +2158,18 @@ generate_html_report() {
     details.artifact[open] {
       border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
     }
-    details.artifact summary {
+    details.artifact > summary {
+      overflow-wrap: anywhere;
       cursor: pointer;
       padding: 12px 14px;
       font-weight: 700;
       color: var(--accent);
       background: color-mix(in srgb, var(--panel) 92%, var(--accent));
     }
-    details.artifact[open] summary {
+    details.artifact[open] > summary {
       border-bottom: 1px solid var(--line);
     }
+    .evidence-source { padding: 10px 14px; overflow-wrap: anywhere; }
     .artifact-file {
       color: var(--muted);
       font-size: 12px;
@@ -2162,6 +2259,23 @@ generate_html_report() {
         width: 100%;
       }
     }
+    .report-header { align-items: center; flex-direction: row; }
+    .brand { min-width: 0; flex: 1; }
+    .brand > div { min-width: 0; }
+    .theme-toggle { flex: 0 0 auto; width: 42px; height: 42px; }
+    .report-section, .notice[aria-label="Scan details"] {
+      padding: 20px; margin: 20px 0; border-radius: 12px;
+      border: 1px solid var(--line);
+      border-top: 5px solid #6ea8ff;
+      background: var(--panel);
+    }
+    .report-section > h2, .report-section .section-heading h2,
+    .notice[aria-label="Scan details"] h2 { color: var(--text); }
+    @media (max-width: 640px) {
+      .report-header { flex-direction: row; align-items: center; gap: 10px; }
+      .theme-toggle { width: 42px; }
+      .report-section, .notice[aria-label="Scan details"] { padding: 14px; }
+    }
   </style>
 </head>
 <body>
@@ -2171,30 +2285,30 @@ HTML
     printf '    <div class="brand">\n'
     printf '      <svg class="report-mark" viewBox="0 0 256 320" role="img" aria-label="Bident logo"><defs><linearGradient id="reportRedSteel" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="#2a0202"/><stop offset="0.42" stop-color="#7b0d0d"/><stop offset="1" stop-color="#190101"/></linearGradient><linearGradient id="reportHandleSteel" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="#111318"/><stop offset="0.5" stop-color="#3a3d43"/><stop offset="1" stop-color="#050608"/></linearGradient></defs><path d="M83 292h90l-14-92c28-21 51-58 48-113-2-36-13-66-31-87 2 48-6 91-23 128-9 20-18 34-25 43-7-9-16-23-25-43C86 91 78 48 80 0 62 21 51 51 49 87c-3 55 20 92 48 113L83 292z" fill="#07080b" stroke="#030303" stroke-width="7" stroke-linejoin="round"/><path d="M87 184c-18-16-31-46-27-91 2-21 8-40 18-56-4 36 2 72 16 105 7 17 16 32 26 45-12 1-23 0-33-3z" fill="url(#reportRedSteel)" stroke="#120101" stroke-width="5" stroke-linejoin="round"/><path d="M169 184c18-16 31-46 27-91-2-21-8-40-18-56 4 36-2 72-16 105-7 17-16 32-26 45 12 1 23 0 33-3z" fill="url(#reportRedSteel)" stroke="#120101" stroke-width="5" stroke-linejoin="round"/><path d="M111 300h34l-5-82h-24l-5 82z" fill="url(#reportHandleSteel)" stroke="#030303" stroke-width="6" stroke-linejoin="round"/><path d="M100 204c9 11 19 17 28 17s19-6 28-17c-7 33-16 51-28 51s-21-18-28-51z" fill="#300202" stroke="#090101" stroke-width="5" stroke-linejoin="round"/><g transform="translate(98 194)"><path d="M30 2c18 0 30 14 30 31 0 11-5 18-13 23v17H13V56C5 51 0 44 0 33 0 16 12 2 30 2z" fill="#efefef" stroke="#080808" stroke-width="6" stroke-linejoin="round"/><path d="M14 34c0-6 4-11 10-11 5 0 9 4 9 10 0 7-5 11-11 11-5 0-8-4-8-10z" fill="#050505"/><path d="M36 33c0-6 4-10 9-10 6 0 10 5 10 11 0 6-3 10-8 10-6 0-11-4-11-11z" fill="#050505"/><path d="M30 42l-7 11h14l-7-11z" fill="#050505"/><path d="M18 63h24" fill="none" stroke="#050505" stroke-width="5" stroke-linecap="round"/><path d="M22 57v16M30 56v17M38 57v16" fill="none" stroke="#050505" stroke-width="4" stroke-linecap="round"/></g><path d="M93 292h70" fill="none" stroke="#050505" stroke-width="12" stroke-linecap="round"/></svg>\n'
     printf '      <div>\n'
-    printf '        <h1>Bident Scan Report</h1>\n'
+    printf '        <h1>Bident Network Security Assessment Report</h1>\n'
     printf '        <p class="muted">Generated %s</p>\n' "$(html_escape_text "$generated_at")"
     printf '      </div>\n'
     printf '    </div>\n'
     printf '    <button class="theme-toggle" type="button" id="themeToggle" aria-label="Toggle dark mode" title="Toggle theme">☾</button>\n'
     printf '  </header>\n'
-    printf '  <section class="notice">\n'
-    printf '    <strong>Disclaimer</strong>\n'
+    printf '  <section class="notice disclaimer">\n'
+    printf '    <strong class="disclaimer-heading"><svg class="disclaimer-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path stroke-linejoin="round" d="M10.3 4.9a2 2 0 0 1 3.4 0l7.2 12.5a2 2 0 0 1-1.7 3H4.8a2 2 0 0 1-1.7-3z"/><path d="M12 9v4M12 17h.01"/></svg>Disclaimer</strong>\n'
     printf '    <p>Some findings may be false positives and should be manually validated before action is taken. Use this tool only for authorized and legal security testing. The owner of this script is not liable for illegal, unauthorized, or harmful use.</p>\n'
     printf '  </section>\n'
-    printf '  <section class="notice" aria-label="Scan timing">\n'
-    printf '    <strong>Scan Timing</strong>\n'
-    printf '    <p>Start Time: %s</p>\n' "$(html_escape_text "${SCAN_STARTED_AT:-Unavailable}")"
-    printf '    <p>Finish Time: %s</p>\n' "$(html_escape_text "${SCAN_FINISHED_AT:-Unavailable}")"
-    printf '    <p>Run Time (HH:MM:SS): %s</p>\n' "$(html_escape_text "${SCAN_RUNTIME:-Unavailable}")"
-    printf '  </section>\n'
-    printf '  <section class="metrics">\n'
-    printf '    <div class="metric"><strong>%s</strong><span>Scoped Hosts</span></div>\n' "$scope_count"
-    printf '    <div class="metric"><strong>%s</strong><span>Live Hosts</span></div>\n' "$live_count"
-    printf '    <div class="metric"><strong>%s</strong><span>Total Ports Open</span></div>\n' "$open_rows"
+    printf '  <section class="notice" aria-label="Scan details">\n'
+    printf '    <h2>Scan Details</h2>\n'
+    printf '    <div class="metrics">\n'
+    printf '    <div class="metric metric-time"><span>Start Time</span><strong>%s</strong></div>\n' "$(html_escape_text "${SCAN_STARTED_AT:-Unavailable}")"
+    printf '    <div class="metric metric-time"><span>Finish Time</span><strong>%s</strong></div>\n' "$(html_escape_text "${SCAN_FINISHED_AT:-Unavailable}")"
+    printf '    <div class="metric metric-time"><span>Run Time (HH:MM:SS)</span><strong>%s</strong></div>\n' "$(html_escape_text "${SCAN_RUNTIME:-Unavailable}")"
+    printf '    <div class="metric"><span>Scoped Hosts</span><strong>%s</strong></div>\n' "$scope_count"
+    printf '    <div class="metric"><span>Live Hosts</span><strong>%s</strong></div>\n' "$live_count"
+    printf '    <div class="metric"><span>Total Ports Open</span><strong>%s</strong></div>\n' "$open_rows"
+    printf '    </div>\n'
     printf '  </section>\n'
   } > "$report_file"
 
-  printf '  <h2>Services</h2>\n' >> "$report_file"
+  printf '  <section class="report-section" aria-label="Services"><h2>Services</h2>\n' >> "$report_file"
   if [[ ! -s "$services_tsv" || "$service_rows" -eq 0 ]]; then
     printf '  <div class="empty">No services were confirmed.</div>\n' >> "$report_file"
   else
@@ -2234,7 +2348,7 @@ HTML
     } >> "$report_file"
   fi
 
-  printf '  <h2>Open Ports Found</h2>\n' >> "$report_file"
+  printf '  </section>\n  <section class="report-section" aria-label="Open Ports Found"><h2>Open Ports Found</h2>\n' >> "$report_file"
 
   if [[ ! -s "$open_tsv" || "$open_rows" -eq 0 ]]; then
     printf '  <div class="empty">No open ports were confirmed.</div>\n' >> "$report_file"
@@ -2254,9 +2368,9 @@ HTML
         previous_proto="$proto"
         previous_port="$port"
         display_label="$(port_card_label "$proto" "$port" "$services_tsv")"
-        printf '    <details class="port-card" name="open-port">\n' >> "$report_file"
-        printf '      <summary class="port-summary"><span class="port-title"><span class="port-chevron" aria-hidden="true">›</span><strong>%s</strong></span><span class="badge">%s</span></summary>\n' \
-          "$(html_escape_text "$display_label")" "$(html_escape_text "$proto")" >> "$report_file"
+        printf '    <details class="port-card">\n' >> "$report_file"
+        printf '      <summary class="port-summary"><span class="port-title"><strong>%s</strong></span></summary>\n' \
+          "$(html_escape_text "$display_label")" >> "$report_file"
         printf '      <div class="port-host-list" data-affected-targets>\n' >> "$report_file"
         print_copy_targets_button >> "$report_file"
         printf '      <pre class="targets">' >> "$report_file"
@@ -2273,11 +2387,12 @@ HTML
     printf '  </div>\n' >> "$report_file"
   fi
 
+  printf '  </section>\n' >> "$report_file"
   append_findings_summary_section "$report_file"
   append_credential_summary_section "$report_file"
 
   {
-    printf '  <h2>Core Artifacts</h2>\n'
+    printf '  <section class="report-section" aria-label="Core Artifacts"><h2>Core Artifacts</h2>\n'
     printf '  <details class="artifact core-artifacts">\n'
     printf '    <summary>Core Artifacts</summary>\n'
   } >> "$report_file"
@@ -2307,6 +2422,7 @@ HTML
   fi
   {
     printf '  </details>\n'
+    printf '  </section>\n'
     printf '  <footer class="report-footer">\n'
     printf '    <span><strong>Bident</strong> Network VAPT Toolkit</span>\n'
     printf '    <span>Generated %s</span>\n' "$(html_escape_text "$generated_at")"
@@ -2314,6 +2430,17 @@ HTML
     cat <<'HTML'
 </main>
 <script>
+  // REPORT_TOGGLES_START
+  function toggleSectionDetails(selector, statusId, open) {
+    const sections = document.querySelectorAll(selector);
+    sections.forEach(section => { section.open = open; });
+    document.getElementById(statusId).textContent = `${open ? 'Expanded' : 'Collapsed'} ${sections.length} sections.`;
+  }
+  document.getElementById('expandAll').addEventListener('click', () => toggleSectionDetails('#findingsSummary details', 'reportToggleStatus', true));
+  document.getElementById('collapseAll').addEventListener('click', () => toggleSectionDetails('#findingsSummary details', 'reportToggleStatus', false));
+  document.getElementById('expandCredentials').addEventListener('click', () => toggleSectionDetails('[data-credential-copy] details', 'credentialToggleStatus', true));
+  document.getElementById('collapseCredentials').addEventListener('click', () => toggleSectionDetails('[data-credential-copy] details', 'credentialToggleStatus', false));
+  // REPORT_TOGGLES_END
   // COPY_TARGETS_START
   async function copyAffectedTargets(button) {
     const container = button.closest('[data-affected-targets]');
@@ -2486,18 +2613,7 @@ HTML
     }
   }
 
-  document.querySelectorAll('details.port-card').forEach((details) => {
-    details.addEventListener('toggle', () => {
-      if (!details.open) {
-        return;
-      }
-      document.querySelectorAll('details.port-card[open]').forEach((other) => {
-        if (other !== details) {
-          other.open = false;
-        }
-      });
-    });
-  });
+
 </script>
 </body>
 </html>

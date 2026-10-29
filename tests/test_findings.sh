@@ -143,8 +143,8 @@ actual="$(awk -F '\034' '$3 ~ /^username:/ {print $3 "\t" $4}' rows.txt)"
 [[ "$(awk -F '\034' '$2 ~ /username: bob/ {print $4}' rows.txt)" == '192.0.2.11:2222' ]] || exit 1
 [[ -z "$(awk -F '\034' '$2 ~ /unattributed|host-only|no-target/ {print $4}' rows.txt | tr -d '\n')" ]] || exit 1
 append_credential_summary_section report.html
-grep -Fq 'Copy entries with Host:Port' report.html || exit 1
-grep -Fq 'Copy Host:Port only' report.html || exit 1
+grep -Fq 'Copy Credentials' report.html || exit 1
+grep -Fq 'Copy Hosts' report.html || exit 1
 grep -Fq 'data-verified="true">192.0.2.10:3306' report.html || exit 1
 grep -Fq 'data-verified="true">192.0.2.12:161' report.html || exit 1
 grep -Fq 'data-verified="false">Not identified' report.html || exit 1
@@ -263,9 +263,9 @@ p.write_text(re.sub(r'<details class="artifact"><summary>Full Evidence.*?</pre><
 PYTEST
 grep -Fq '<div data-affected-targets>' report.html || exit 1
 ! grep -Fq '<summary>Affected' report.html || exit 1
-grep -Fq 'Evidence' report.html || exit 1
-grep -Fq '<td>192.0.2.10:135</td><td>Protocol: test</td>' report.html || exit 1
-grep -Fq '<td>192.0.2.60:3389</td><td>[*] Detected RDP on 192.0.2.60:3389 (name:LAB)</td>' report.html || exit 1
+! grep -Fq '<summary>Evidence</summary>' report.html || exit 1
+grep -Fq '<td>192.0.2.10:135</td>' report.html || exit 1
+grep -Fq '<td>192.0.2.60:3389</td>' report.html || exit 1
 ! grep -Fq 'Connection refused' report.html || exit 1
 grep -Fq '192.0.2.10:135' report.html || exit 1
 grep -Fq '192.0.2.60:3389' report.html || exit 1

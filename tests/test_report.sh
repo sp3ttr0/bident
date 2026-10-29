@@ -212,3 +212,73 @@ grep -q 'udp -X quit' "$fixture_dir/stopped.calls" || exit 1
 ! grep -q responder "$fixture_dir/stopped.calls" || exit 1
 printf 'Whole-results permission checks passed.\n'
 )
+
+# Consistent expanders, shared review notices, full evidence and scan summary.
+printf 'Running: Report presentation consistency\n'
+(
+set -euo pipefail
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+source lib/config.sh
+source lib/utils.sh
+source lib/ports.sh
+source lib/checks.sh
+source lib/report.sh
+fixture_dir="$(mktemp -d "${TMPDIR:-/tmp}/bident-report-layout.XXXXXX")"
+cd "$fixture_dir"
+mkdir -p "$TOOL_DIR" "$NSE_DIR"
+append_command_header "$TOOL_DIR/s_rpcclient_135.txt" rpcclient -U '' -N -c enumprivs 192.0.2.1
+printf 'SeBackupPrivilege\n' >> "$TOOL_DIR/s_rpcclient_135.txt"
+printf 'Nmap scan report for 192.0.2.1\n21/tcp open ftp\n| root:root - Valid credentials\n' > "$NSE_DIR/s_ftp.txt"
+generate_html_report
+python3 - <<'PYTEST'
+from pathlib import Path
+import re
+s=Path('report.html').read_text()
+assert 'aria-label="1 findings">1</span>' in s
+assert 'aria-label="1 credentials">1</span>' in s
+assert 'finding-severity' not in s
+assert 'port-chevron' not in s
+assert '<summary>Evidence</summary>' not in s
+assert '<summary>Full Evidence' in s
+assert '<span class="badge">' not in s
+assert s.index('id="findingsSummary"') < s.index('id="expandAll"') < s.index('<section data-credential-copy')
+assert 'Review each finding and its full evidence carefully' in s
+assert 'Review each entry, its Host:Port' in s
+summary=re.search(r'<section class="notice" aria-label="Scan details">(.*?)</section>',s,re.S).group(1)
+for text in ['Scan Details','Start Time','Finish Time','Run Time','Scoped Hosts','Live Hosts','Total Ports Open']: assert text in summary
+footer=re.search(r'\.report-footer \{(.*?)\}',s,re.S).group(1)
+assert 'text-align: center' in footer and 'justify-content: center' in footer
+assert 'details[open] > summary::after { content: "−"; }' in s
+PYTEST
+printf 'Report presentation checks passed.\n'
+)
+
+# Bulk disclosure controls affect only nested Findings Summary sections.
+printf 'Running: Expand/collapse all report sections\n'
+(
+set -euo pipefail
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+node <<'JSTEST'
+const fs = require('node:fs');
+const assert = require('node:assert/strict');
+const source=fs.readFileSync('lib/report.sh','utf8');
+const script=source.split('// REPORT_TOGGLES_START')[1].split('// REPORT_TOGGLES_END')[0];
+const sections=[{open:false},{open:true},{open:false},{open:false}];
+const credentials=[{open:false},{open:false}];
+const controls={expandAll:{},collapseAll:{},reportToggleStatus:{textContent:''},expandCredentials:{},collapseCredentials:{},credentialToggleStatus:{textContent:''}};
+const document={querySelectorAll(selector){if(selector==='[data-credential-copy] details') return credentials; assert.equal(selector,'#findingsSummary details');return sections},getElementById(id){return controls[id]}};
+for(const id of ['expandAll','collapseAll','expandCredentials','collapseCredentials']) controls[id].addEventListener=(event,handler)=>{assert.equal(event,'click');controls[id].click=handler};
+new Function('document',script)(document);
+controls.expandAll.click(); assert(sections.every(section=>section.open));
+assert(credentials.every(section=>!section.open));
+controls.expandCredentials.click(); assert(credentials.every(section=>section.open));
+controls.collapseCredentials.click(); assert(credentials.every(section=>!section.open));
+assert(sections.every(section=>section.open));
+assert.equal(controls.reportToggleStatus.textContent,'Expanded 4 sections.');
+controls.collapseAll.click(); assert(sections.every(section=>!section.open));
+assert.equal(controls.reportToggleStatus.textContent,'Collapsed 4 sections.');
+assert(!source.includes('name="open-port"'));
+assert(!source.includes("document.querySelectorAll('details.port-card[open]')"));
+console.log('Expand/collapse all checks passed.');
+JSTEST
+)
