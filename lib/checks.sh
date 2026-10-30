@@ -68,17 +68,6 @@ run_logged() {
   run_with_timeout "$@" >> "$outfile" 2>&1
 }
 
-print_check_result() {
-  local label="$1"
-  local result_file="$2"
-
-  if result_output_has_finding "$label" "$result_file"; then
-    printf '%s%s Found%s\n' "$CLR_GREEN" "$label" "$CLR_RESET"
-  else
-    printf '%sNo %s Found%s\n' "$CLR_YELLOW" "$label" "$CLR_RESET"
-  fi
-}
-
 print_smb_relay_note() {
   printf '%sNote:%s Possible for Server Message Block (SMB) Relay Attack when SMB signing is disabled.\n' "$CLR_YELLOW" "$CLR_RESET"
 }
@@ -191,8 +180,8 @@ run_logged_check() {
   elif [[ ! -s "$outfile" ]]; then
     rm -f "$outfile"
   fi
-  if [[ "$label" != 'Unauthenticated Remote Procedure Call' ]] || result_output_has_finding "$label" "$temp_output"; then
-    print_check_result "$label" "$temp_output"
+  if result_output_has_finding "$label" "$temp_output"; then
+    external_notify_command "$label" "$temp_output" "$@"
   fi
   rm -f "$temp_output"
   return "$status"
@@ -228,7 +217,6 @@ run_rpc_135_checks() {
   done < <(open_target_ports tcp 135)
 
   if [[ "$found" == false ]]; then
-    printf '%sNo MSRPC (135) Found%s\n' "$CLR_YELLOW" "$CLR_RESET"
     return
   fi
 }
@@ -328,7 +316,6 @@ run_ssh_audit_check() {
   printf '%sChecking For Weak SSH Ciphers%s\n' "$CLR_CYAN" "$CLR_RESET"
   targets_file="$(open_targets_file_for_ports tcp 22 ssh)"
   if [[ ! -s "$targets_file" ]]; then
-    printf '%sNo Weak SSH Ciphers (22) Found%s\n' "$CLR_YELLOW" "$CLR_RESET"
     return
   fi
 
@@ -357,12 +344,13 @@ run_ssh_audit_check() {
   done < "$targets_file"
 
   if [[ "$finding_found" == true ]]; then
-    printf '%sWeak SSH Ciphers Found%s\n' "$CLR_GREEN" "$CLR_RESET"
+    if [[ -n "$(ssh_weak_cipher_rows "${TOOL_DIR}/ssh-audit_results.txt" | cut -f1 | verified_ip_port_lines)" ]]; then
+      printf '%s[+] Weak SSH Ciphers: Found and verified.%s\n' "$CLR_GREEN" "$CLR_RESET"
+    fi
     ssh_weak_cipher_rows "${TOOL_DIR}/ssh-audit_results.txt" | cut -f1 | sort -u > "${TOOL_DIR}/ssh_weak_cipher_targets.txt"
   else
     rm -f ${TOOL_DIR}/ssh-audit_results.txt
-    if [[ "$incomplete" == true ]]; then printf '%sssh-audit: Incomplete; one or more hosts could not be checked.%s\n' "$CLR_YELLOW" "$CLR_RESET"
-    else printf '%sNo Weak SSH Ciphers Found%s\n' "$CLR_YELLOW" "$CLR_RESET"; fi
+    if [[ "$incomplete" == true ]]; then printf '%sssh-audit: Incomplete; one or more hosts could not be checked.%s\n' "$CLR_YELLOW" "$CLR_RESET"; fi
   fi
 }
 
@@ -379,9 +367,7 @@ run_dns_dig_checks() {
   while read -r target port; do
     [[ -n "$target" ]] || continue
     temp_output="$(mktemp "${TMPDIR:-/tmp}/bident_dns.XXXXXX")"
-    if run_external_capture "DNSSEC ${target}:${port}" "$temp_output" "${dig_args[@]}" +dnssec "@${target}" google.com A; then
-      printf '%sDNSSEC %s:%s: Query completed; missing AD alone is inconclusive.%s\n' "$CLR_CYAN" "$target" "$port" "$CLR_RESET"
-    fi
+    run_external_capture "DNSSEC ${target}:${port}" "$temp_output" "${dig_args[@]}" +dnssec "@${target}" google.com A || true
     rm -f "$temp_output"
     run_logged_check "DNS Recursion Enabled" "${TOOL_DIR}/dns_recursion_enabled.txt" "${dig_args[@]}" "@${target}" google.com A
   done < <(open_target_ports any 53)
@@ -505,6 +491,7 @@ run_ssl_external_checks() {
 
   [[ ! -e ${TOOL_DIR}/testssl_results.txt || -s ${TOOL_DIR}/testssl_results.txt ]] || rm -f ${TOOL_DIR}/testssl_results.txt
   [[ ! -e ${TOOL_DIR}/sslscan_results.txt || -s ${TOOL_DIR}/sslscan_results.txt ]] || rm -f ${TOOL_DIR}/sslscan_results.txt
+  external_notify_tls_findings
 }
 
 run_ike_weak_encryption_check() {
@@ -540,10 +527,8 @@ run_ike_weak_encryption_check() {
     if grep -Eiq '(^|[^A-Za-z0-9])(3des|des|md5|sha-?1|group[[:space:]]*1|group[[:space:]]*2|modp768|modp1024)([^A-Za-z0-9]|$)' "$temp_output"; then
       append_command_header "$outfile" ike-scan -M "$target"
       cat "$temp_output" >> "$outfile"
-      printf '%sIKE VPN Peer Weak Encryption Found%s\n' "$CLR_GREEN" "$CLR_RESET"
+      external_notify_command 'IKE VPN Peer Weak Encryption' "$temp_output" ike-scan -M "$target"
       finding=true
-    else
-      printf '%sNo IKE VPN Peer Weak Encryption Found%s\n' "$CLR_YELLOW" "$CLR_RESET"
     fi
 
     rm -f "$temp_output"
@@ -566,4 +551,32 @@ run_if_any_open() {
   else
     printf '%sNo %s Found%s\n' "$CLR_YELLOW" "$label" "$CLR_RESET"
   fi
+}
+
+# Validate the current command block using the same endpoint attribution as the
+# report. A successful exit or keyword by itself is not a verified finding.
+external_notify_command() {
+  local label="$1" output="$2" block endpoints
+  shift 2
+  block="$(mktemp "${TMPDIR:-/tmp}/bident_notify.XXXXXX")"
+  append_command_header "$block" "$@"
+  cat "$output" >> "$block"
+  endpoints="$(tool_finding_endpoints "$label" "$block")"
+  if [[ -n "$endpoints" ]]; then
+    printf '%s[+] %s: Found and verified.%s\n' "${CLR_GREEN:-}" "$label" "${CLR_RESET:-}"
+  fi
+  rm -f "$block"
+}
+
+external_notify_tls_findings() {
+  local summary title
+  summary="$(mktemp "${TMPDIR:-/tmp}/bident_tls_notify.XXXXXX")"
+  # Share the report renderer classifier, including cross-tool contradictions.
+  # Only finding titles are read back; hosts and evidence never reach stdout.
+  append_tls_findings_summary "$summary"
+  while IFS= read -r title; do
+    [[ -n "$title" ]] || continue
+    printf '%s[+] %s: Found and verified.%s\n' "${CLR_GREEN:-}" "$title" "${CLR_RESET:-}"
+  done < <(sed -nE 's/.*<strong>([^<]+)<\/strong>.*/\1/p' "$summary" | sort -u)
+  rm -f "$summary"
 }

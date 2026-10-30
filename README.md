@@ -62,7 +62,8 @@ Use `./bident.sh --help` for full usage. The SNMP community list is `wordlists/s
 - NetExec SMB and rpcdump dependencies are checked silently before discovery. Failures are reported and the affected tool is skipped.
 - SSL/TLS checks cover **443 and 8443**, after NSE and before Metasploit. testssl is primary, sslscan cross-checks, and SSL/TLS NSE runs only when neither is installed.
 - TLS tools have a fixed **30-minute timeout per tool per Host:Port**, requiring GNU `timeout` or `gtimeout`. This is independent of `--tool-timeout`.
-- Each Metasploit module runs separately, with complete stdout/stderr captured. Separate processes add console startup time.
+- Ghostcat runs only for confirmed open TCP 8009 hosts, requesting `/WEB-INF/web.xml`. Valid deployment XML is copied to `metasploit/loot/` and included as **Apache Tomcat AJP File Read (Ghostcat)**; Python 3 is required for XML validation. Host attribution, retrieved XML, and SHA-256 hashes of the saved file and full log are rechecked when building the report.
+- Each Metasploit module runs separately, with complete stdout/stderr captured. Separate processes add console startup time. Verified findings print a success notification; runtime failures and timeouts print **Incomplete** with a log path. Affected Host:Port lists remain in the report.
 - Findings require qualifying saved evidence tied to the host and port. Failed or ambiguous checks are excluded from affected lists; this does not independently verify exploitability.
 - Credential entries retain their evidence and Host:Port. Unknown endpoints show **Not identified**; enumerated usernames alone do not confirm passwords. Credential copy buttons cover the displayed entries, up to 80.
 
@@ -80,7 +81,7 @@ logs/                    Execution errors and scan logs
 targets_with_open_ports/ Service tables and target lists
 ```
 
-Failed external, TLS, and Metasploit checks appear under **Core Artifacts**. Full evidence is retained without truncation. Start time, finish time, and runtime appear in the terminal and report; resumed scans measure the current invocation.
+Verified external-tool findings print **Found and verified** without affected Host:Port lists; completed checks with no verified finding stay silent. Failed external, TLS, and Metasploit checks print **Incomplete** and appear under **Core Artifacts**. Full evidence is retained without truncation. Start time, finish time, and runtime appear in the terminal and report; resumed scans measure the current invocation.
 
 When launched with sudo, results ownership and owner access are restored to the invoking user on completion, cancellation, and ordinary errors. Forced termination or shutdown may still require manual permission repair.
 

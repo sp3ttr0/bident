@@ -45,10 +45,10 @@ MOCK_OUTPUT='(enc) aes128-cbc -- [fail] deprecated CBC'
 for MOCK_EXIT in 2 3; do run_external_capture 'SSH' captured ssh-audit >> terminal.txt || exit 1; done
 MOCK_OUTPUT='connection refused'; MOCK_EXIT=1
 ! run_external_capture 'SSH' captured ssh-audit >> terminal.txt || exit 1
-# Ordinary completed negatives still use the existing negative message.
+# Completed negatives stay silent.
 MOCK_OUTPUT='No endpoints returned'; MOCK_EXIT=0
 run_logged_check 'Exposed RPC Services' "$TOOL_DIR/s_rpcdump_135.txt" mock-tool > negative.txt
-grep -q 'No Exposed RPC Services Found' negative.txt || exit 1
+[[ ! -s negative.txt ]] || exit 1
 # Successful findings are still retained with their command and evidence.
 MOCK_OUTPUT='Protocol: test\nProvider: example'
 run_logged_check 'Exposed RPC Services' "$TOOL_DIR/s_rpcdump_135.txt" mock-tool > positive.txt
@@ -165,6 +165,7 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 source lib/config.sh
 source lib/checks.sh
+source lib/report.sh
 awk '
   /run_if_open.*NSE/ {last_nse = NR}
   /^[[:space:]]*run_ssl_checks$/ {tls = NR; count++}
@@ -403,6 +404,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 source lib/config.sh
 source lib/utils.sh
 source lib/checks.sh
+source lib/report.sh
 fixture_dir="$(mktemp -d "${TMPDIR:-/tmp}/bident-rpc-denied.XXXXXX")"
 cd "$fixture_dir"
 mkdir -p bin "$TOOL_DIR" "$LOG_DIR"
@@ -419,7 +421,7 @@ run_logged_check 'Unauthenticated Remote Procedure Call' "$TOOL_DIR/rpc.txt" rpc
 [[ ! -s terminal.txt && ! -s "$LOG_DIR/external_status.tsv" && ! -s "$TOOL_DIR/rpc.txt" ]] || exit 1
 RPC_OUTPUT='SeBackupPrivilege'; RPC_EXIT=0
 run_logged_check 'Unauthenticated Remote Procedure Call' "$TOOL_DIR/rpc.txt" rpcclient -U '' -N -c enumprivs 192.0.2.2 > found.txt
-grep -Fq 'Unauthenticated Remote Procedure Call Found' found.txt || exit 1
+grep -Fq 'Unauthenticated Remote Procedure Call: Found and verified.' found.txt || exit 1
 RPC_OUTPUT='Connection refused'; RPC_EXIT=1
 run_logged_check 'Unauthenticated Remote Procedure Call' "$TOOL_DIR/rpc.txt" rpcclient -U '' -N -c enumprivs 192.0.2.3 > failed.txt
 grep -q Incomplete failed.txt || exit 1
@@ -430,4 +432,47 @@ RPC_OUTPUT='Cannot connect to server.  Error was NT_STATUS_ACCESS_DENIED'; RPC_E
 run_logged_check 'Unauthenticated Remote Procedure Call' "$TOOL_DIR/rpc.txt" rpcclient -U '' -N -c enumprivs 192.0.2.5 > timeout.txt
 grep -q Incomplete timeout.txt || exit 1
 printf 'Anonymous RPC denial checks passed.\n'
+)
+
+# External notifications require report-verifiable results, without host lists.
+(
+set -euo pipefail
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+source lib/config.sh
+source lib/utils.sh
+source lib/checks.sh
+source lib/report.sh
+fixture_dir="$(mktemp -d "${TMPDIR:-/tmp}/bident-external-notify.XXXXXX")"
+trap 'rm -rf "$fixture_dir"' EXIT
+cd "$fixture_dir"
+printf 'dn:\nnamingContexts: DC=example,DC=test\n' > output.txt
+output="$(external_notify_command 'LDAP Anonymous Bind' output.txt ldapsearch -x -H ldap://192.0.2.10:389)"
+[[ "$output" == *'[+] LDAP Anonymous Bind: Found and verified.'* ]] || exit 1
+[[ "$output" != *'192.0.2.10'* ]] || exit 1
+# Authenticated LDAP or malformed hosts must not be called verified.
+[[ -z "$(external_notify_command 'LDAP Anonymous Bind' output.txt ldapsearch -D admin -H ldap://192.0.2.10:389)" ]] || exit 1
+[[ -z "$(external_notify_command 'LDAP Anonymous Bind' output.txt ldapsearch -x -H ldap://999.0.2.10:389)" ]] || exit 1
+printf 'Cannot connect to server. Error was NT_STATUS_ACCESS_DENIED\n' > output.txt
+[[ -z "$(external_notify_command 'Unauthenticated Remote Procedure Call' output.txt rpcclient -U '' -N -c enumprivs 192.0.2.10)" ]] || exit 1
+printf 'SeBackupPrivilege 0:17\n' > output.txt
+output="$(external_notify_command 'Unauthenticated Remote Procedure Call' output.txt rpcclient -U '' -N -c enumprivs 192.0.2.10)"
+[[ "$output" == *'Found and verified.'* && "$output" != *'192.0.2.10'* ]] || exit 1
+mkdir -p "$TOOL_DIR" "$NSE_DIR"
+cat > "$TOOL_DIR/testssl_results.txt" <<'DATA'
+Command: testssl 192.0.2.10:443
+ SSLv2 not offered (OK)
+ TLS 1 not offered
+ TLS 1.2 offered (OK)
+ TLS 1.3 not offered
+Bident TLS result: Finished; review output
+DATA
+# Verify the notification path runs the same classifier as report generation.
+append_tls_findings_summary expected.html
+expected_count="$(grep -c '<strong>' expected.html || true)"
+output="$(external_notify_tls_findings)"
+[[ "$expected_count" -gt 0 ]] || exit 1
+actual_count="$(printf '%s\n' "$output" | grep -c 'Found and verified' || true)"
+[[ "$actual_count" == "$expected_count" ]] || exit 1
+[[ "$output" != *'192.0.2.10'* ]] || exit 1
+printf 'External tool notification checks passed.\n'
 )

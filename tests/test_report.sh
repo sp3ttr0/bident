@@ -241,7 +241,7 @@ assert 'port-chevron' not in s
 assert '<summary>Evidence</summary>' not in s
 assert '<summary>Full Evidence' in s
 assert '<span class="badge">' not in s
-assert s.index('id="findingsSummary"') < s.index('id="expandAll"') < s.index('<section data-credential-copy')
+assert s.index('id="findingsSummary"') < s.index('id="expandAll"') < s.index('<section class="report-section" data-credential-copy')
 assert 'Review each finding and its full evidence carefully' in s
 assert 'Review each entry, its Host:Port' in s
 summary=re.search(r'<section class="notice" aria-label="Scan details">(.*?)</section>',s,re.S).group(1)

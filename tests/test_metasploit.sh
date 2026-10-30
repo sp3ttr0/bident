@@ -310,3 +310,101 @@ grep -Fq 'nbname_udp_137.txt:2' report.html || exit 1
 [[ "$(default_result_label nbname_udp_137.txt)" == 'NetBIOS Information Disclosure' ]] || exit 1
 printf 'NetBIOS Metasploit checks passed.\n'
 )
+
+# Ghostcat: do not trust saved-loot messages without a valid deployment XML.
+(
+set -euo pipefail
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+source lib/config.sh
+source lib/utils.sh
+source lib/report.sh
+source lib/metasploit.sh
+fixture_dir="$(mktemp -d "${TMPDIR:-/tmp}/bident-ghostcat.XXXXXX")"
+trap 'rm -rf "$fixture_dir"' EXIT
+cd "$fixture_dir"
+mkdir -p "$MSF_RESULT_DIR"
+printf '192.0.2.1\n192.0.2.2\n' > "$MSF_DIR/targets_tcp_8009.txt"
+printf '<web-app xmlns="http://xmlns.jcp.org/xml/ns/javaee"><display-name>Fixture</display-name></web-app>\n' > 192.0.2.1_good.xml
+printf '<html>Error</html>\n' > 192.0.2.2_error.xml
+result="$MSF_RESULT_DIR/tomcat_ghostcat_tcp_8009.txt"
+{
+  printf 'RHOST => 192.0.2.1\n'
+  cat 192.0.2.1_good.xml
+  printf '[+] File contents save to: %s/192.0.2.1_good.xml\n' "$PWD"
+  printf 'RHOST => 192.0.2.2\n[-] Unable to read file, target may not be vulnerable.\n'
+  printf '[+] File contents save to: %s/192.0.2.1_good.xml\n' "$PWD"
+  printf 'RHOST => 192.0.2.99\n[+] File contents save to: %s/192.0.2.1_good.xml\n' "$PWD"
+  printf 'RHOST => 192.0.2.2\n[+] File contents save to: %s/192.0.2.2_error.xml\n' "$PWD"
+} > "$result"
+notification="$(msf_collect_ghostcat_loot "$result" "$MSF_DIR/targets_tcp_8009.txt")"
+[[ "$notification" == *'Ghostcat): Found and verified.'* ]] || exit 1
+[[ "$notification" == *"Saved file: $MSF_DIR/loot/ghostcat_192.0.2.1_8009_web.xml"* ]] || exit 1
+[[ "$notification" != *'192.0.2.1:8009'* && "$notification" != *'192.0.2.2:8009'* ]] || exit 1
+
+[[ "$(msf_finding_lines "$result" endpoints)" == '192.0.2.1:8009' ]] || exit 1
+cmp 192.0.2.1_good.xml "$MSF_DIR/loot/ghostcat_192.0.2.1_8009_web.xml"
+[[ ! -e "$MSF_DIR/loot/ghostcat_192.0.2.2_8009_web.xml" ]] || exit 1
+# Saved file tampering, missing loot, and changed evidence cannot promote hosts.
+cp "$result" original.txt
+printf '\n[+] 192.0.2.2:8009 - Ghostcat file read verified; saved file: fake\n' >> "$result"
+[[ -z "$(msf_finding_lines "$result" endpoints)" ]] || exit 1
+cp original.txt "$result"
+printf '<web-app><display-name>Changed</display-name></web-app>' > "$MSF_DIR/loot/ghostcat_192.0.2.1_8009_web.xml"
+[[ -z "$(msf_finding_lines "$result" endpoints)" ]] || exit 1
+cp 192.0.2.1_good.xml "$MSF_DIR/loot/ghostcat_192.0.2.1_8009_web.xml"
+rm "$MSF_DIR/loot/ghostcat_192.0.2.1_8009_web.xml"
+[[ -z "$(msf_finding_lines "$result" endpoints)" ]] || exit 1
+msf_collect_ghostcat_loot "$result" "$MSF_DIR/targets_tcp_8009.txt"
+[[ "$(msf_finding_lines "$result" endpoints)" == '192.0.2.1:8009' ]] || exit 1
+# A valid XML file belonging to a different host is still not valid evidence.
+cp 192.0.2.1_good.xml 192.0.2.2_wrong.xml
+printf 'RHOST => 192.0.2.1\n' > "$result"
+cat 192.0.2.1_good.xml >> "$result"
+printf '[+] File contents save to: %s/192.0.2.2_wrong.xml\n' "$PWD" >> "$result"
+msf_collect_ghostcat_loot "$result" "$MSF_DIR/targets_tcp_8009.txt"
+[[ -z "$(msf_finding_lines "$result" endpoints)" ]] || exit 1
+# Even a save message followed by an error in the same host block is rejected.
+printf 'RHOST => 192.0.2.1\n' > "$result"
+cat 192.0.2.1_good.xml >> "$result"
+printf '[+] File contents save to: %s/192.0.2.1_good.xml\n[-] Auxiliary failed: parsing error\n' "$PWD" >> "$result"
+notification="$(msf_collect_ghostcat_loot "$result" "$MSF_DIR/targets_tcp_8009.txt")"
+[[ -z "$notification" ]] || exit 1
+[[ -z "$(msf_finding_lines "$result" endpoints)" ]] || exit 1
+msf_add_port_modules ghostcat.rc tcp 8009 "$MSF_DIR/targets_tcp_8009.txt"
+grep -Fq 'use auxiliary/admin/http/tomcat_ghostcat' ghostcat.rc
+grep -Fq 'set FILENAME /WEB-INF/web.xml' ghostcat.rc
+[[ "$(grep -c '^run$' ghostcat.rc)" == 2 ]] || exit 1
+msf_add_port_modules wrong.rc udp 8009 "$MSF_DIR/targets_tcp_8009.txt"
+[[ ! -s wrong.rc ]] || exit 1
+printf 'Ghostcat validation and loot checks passed.\n'
+)
+
+# Notifications share report validation and never print affected endpoints.
+(
+set -euo pipefail
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+source lib/config.sh
+source lib/utils.sh
+source lib/metasploit.sh
+source lib/report.sh
+fixture_dir="$(mktemp -d "${TMPDIR:-/tmp}/bident-msf-notify.XXXXXX")"
+trap 'rm -rf "$fixture_dir"' EXIT
+cd "$fixture_dir"
+mkdir -p "$MSF_RESULT_DIR"
+printf '192.0.2.1\n' > "$MSF_DIR/targets_tcp_3389.txt"
+file="$MSF_RESULT_DIR/rdp_scanner_tcp_3389.txt"
+printf '[*] 192.0.2.1:3389 - Detected RDP on 192.0.2.1:3389 (Requires NLA: Yes)\n' > "$file"
+output="$(msf_notify_result "$file" 0)"
+[[ "$output" == *'Remote Desktop Protocol Detection: Found and verified.'* ]] || exit 1
+[[ "$output" != *'192.0.2.1'* ]] || exit 1
+printf '[-] Auxiliary failed: NameError uninitialized constant Net::NTLM\n' >> "$file"
+output="$(msf_notify_result "$file" 0)"
+[[ "$output" == *'Found and verified.'* && "$output" == *'Incomplete: module or connection error.'* ]] || exit 1
+printf '[*] Auxiliary module execution completed\n' > "$file"
+[[ -z "$(msf_notify_result "$file" 0)" ]] || exit 1
+[[ "$(msf_notify_result "$file" 143)" == *'Incomplete: check timed out.'* ]] || exit 1
+[[ "$(msf_notify_result "$file" 1)" == *'Incomplete: process exited with status 1.'* ]] || exit 1
+printf '[*] 192.0.2.99:3389 - Detected RDP on 192.0.2.99:3389\n' > "$file"
+[[ -z "$(msf_notify_result "$file" 0)" ]] || exit 1
+printf 'Metasploit terminal notification checks passed.\n'
+)

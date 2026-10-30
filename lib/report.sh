@@ -55,6 +55,7 @@ title_case_acronyms() {
 default_result_label() {
   local result_name="${1##*/}"
   local msf_name
+  if [[ "$result_name" == tomcat_ghostcat_tcp_8009.txt ]]; then printf 'Apache Tomcat AJP File Read (Ghostcat)'; return; fi
   if [[ "$result_name" == nbname_udp_137.txt ]]; then printf 'NetBIOS Information Disclosure'; return; fi
 
   if [[ "$result_name" =~ ^[A-Za-z0-9_]+_(tcp|udp)_[0-9]+\.txt$ ]]; then
@@ -690,6 +691,11 @@ msf_finding_lines() {
     scope_file="${MSF_DIR}/targets_${BASH_REMATCH[1]}_${port}.txt"
     [[ -s "$scope_file" ]] || scope_file=""
   fi
+  if [[ "$kind" == tomcat_ghostcat_tcp_8009.txt ]]; then
+    command -v python3 >/dev/null 2>&1 || return 0
+    python3 "${BIDENT_ROOT}/lib/ghostcat.py" read "$file" "${MSF_DIR}/targets_tcp_8009.txt" "$mode"
+    return
+  fi
   html_escape_stream < "$file" | awk -v kind="$kind" -v mode="$mode" -v default_port="$port" -v scope_file="$scope_file" '
     BEGIN {
       if (scope_file != "") while ((getline scoped_host < scope_file) > 0) {gsub(/^[[:space:]]+|[[:space:]]+$/, "", scoped_host); allowed[scoped_host]=1}
@@ -1094,6 +1100,7 @@ append_findings_summary_section() {
   append_finding_glob_item "$temp_file" "Review" "FTP Anonymous Enabled" "${MSF_RESULT_DIR}/ftp_anonymous_tcp_*.txt"
   append_finding_glob_item "$temp_file" "Review" "SMTP Open Relay" "${MSF_RESULT_DIR}/smtp_relay_tcp_*.txt"
   append_finding_glob_item "$temp_file" "Review" "Server Message Block (SMB) MS17-010 (EternalBlue) Vulnerability" "${MSF_RESULT_DIR}/smb_ms17_010_tcp_*.txt"
+  append_finding_glob_item "$temp_file" "Review" "Apache Tomcat AJP File Read (Ghostcat)" "${MSF_RESULT_DIR}/tomcat_ghostcat_tcp_8009.txt"
   append_finding_glob_item "$temp_file" "Review" "Remote Desktop Protocol Detection" "${MSF_RESULT_DIR}/rdp_scanner_tcp_*.txt"
   append_finding_glob_item "$temp_file" "Review" "Remote Desktop Protocol (RDP) BlueKeep Vulnerability" "${MSF_RESULT_DIR}/cve_2019_0708_bluekeep_tcp_*.txt"
   append_finding_glob_item "$temp_file" "Review" "Virtual Network Computing (VNC) None Authentication" "${MSF_RESULT_DIR}/vnc_none_auth_tcp_*.txt"
@@ -2410,6 +2417,7 @@ HTML
   append_core_artifact_group "$report_file" "Nmap Script Results" \
     "${NSE_DIR}"/*.txt
   append_tls_status_artifacts "$report_file"
+  append_core_artifact_group "$report_file" "Ghostcat Retrieved Files" "${MSF_DIR}/loot"/*
   append_msf_failed_artifacts "$report_file"
   append_external_failed_artifacts "$report_file"
   append_core_artifact_group "$report_file" "External Tool Results" \

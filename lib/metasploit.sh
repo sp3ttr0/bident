@@ -50,7 +50,15 @@ msf_append_module() {
     if [[ "$ssl_mode" == true ]]; then
       printf 'set SSL true\n'
     fi
-    printf 'run\n'
+    if [[ "$module" == auxiliary/admin/http/tomcat_ghostcat ]]; then
+      printf 'set FILENAME /WEB-INF/web.xml\n'
+      while IFS= read -r ghostcat_host; do
+        [[ -n "$ghostcat_host" ]] || continue
+        printf 'set RHOST %s\nset RHOSTS %s\nrun\n' "$(msf_quote_value "$ghostcat_host")" "$(msf_quote_value "$ghostcat_host")"
+      done < "$targets_file"
+    else
+      printf 'run\n'
+    fi
     printf '\n'
   } >> "$rc_file"
 }
@@ -79,6 +87,9 @@ msf_add_port_modules() {
       ;;
     tcp/139|tcp/445)
       msf_append_module "$rc_file" auxiliary/scanner/smb/smb_ms17_010 "$proto" "$port" "$ssl_mode" "$targets_file"
+      ;;
+    tcp/8009)
+      msf_append_module "$rc_file" auxiliary/admin/http/tomcat_ghostcat "$proto" "$port" "$ssl_mode" "$targets_file"
       ;;
     tcp/3389)
       msf_append_module "$rc_file" auxiliary/scanner/rdp/rdp_scanner "$proto" "$port" "$ssl_mode" "$targets_file"
@@ -165,7 +176,7 @@ run_msf_auxiliary_checks() {
     previous_key="$key"
 
     case "$key" in
-      tcp/21|tcp/25|tcp/465|tcp/587|tcp/139|tcp/445|tcp/3389|tcp/5800|tcp/5801|tcp/5900|tcp/5901|udp/137|udp/161)
+      tcp/21|tcp/25|tcp/465|tcp/587|tcp/139|tcp/445|tcp/3389|tcp/5800|tcp/5801|tcp/5900|tcp/5901|tcp/8009|udp/137|udp/161)
         target_file="${MSF_DIR}/targets_${proto}_${port}.txt"
         rc_file="${MSF_DIR}/metasploit_auxiliary_${proto}_${port}.rc"
         : > "$rc_file"
@@ -230,15 +241,12 @@ run_msf_auxiliary_checks() {
       fi
     } > "$result_file" 2>&1 || status=$?
     printf '\nBident Metasploit process exit: %s\n' "$status" >> "$result_file"
+    if [[ "${rc_labels[$index]}" == 'tcp/8009 tomcat_ghostcat' ]]; then
+      msf_collect_ghostcat_loot "$result_file" "${MSF_DIR}/targets_tcp_8009.txt"
+    fi
     cat "$result_file" >> "${MSF_DIR}/msfconsole.log"
     printf '%s\t%s\n' "${rc_labels[$index]}" "$status" >> "${MSF_DIR}/run_status.tsv"
-    if [[ "$status" -ne 0 ]]; then
-      if [[ "$status" -eq 143 ]]; then
-        printf '%sMetasploit Auxiliary For %s Timed Out:%s Continuing...\n' "$CLR_YELLOW" "${rc_labels[$index]}" "$CLR_RESET"
-      else
-        printf '%sMetasploit Auxiliary For %s Finished With Status:%s %s\n' "$CLR_YELLOW" "${rc_labels[$index]}" "$CLR_RESET" "$status"
-      fi
-    fi
+    msf_notify_result "$result_file" "$status"
     completed_modules=$((completed_modules + port_module_count))
     print_progress_bar "Metasploit Progress" "$completed_modules" "$module_count"
     if [[ -t 1 && "$completed_modules" -lt "$module_count" ]]; then
@@ -248,4 +256,67 @@ run_msf_auxiliary_checks() {
 
   find "$MSF_RESULT_DIR" -type f -size 0 -delete 2>/dev/null || true
   printf '%sMetasploit Auxiliary Checks Finished%s\n' "$CLR_GREEN" "$CLR_RESET"
+}
+
+# Ghostcat may store an error response as loot. Promote only a valid web.xml
+# from a scoped host, preserving a portable copy alongside the scan outputs.
+msf_collect_ghostcat_loot() {
+  local result_file="$1" scope_file="$2" saved_file
+  if ! command -v python3 >/dev/null 2>&1; then
+    printf 'Ghostcat: Incomplete: Python 3 is required to validate retrieved XML.\n'
+    printf '\n[-] Auxiliary failed: Ghostcat XML validation requires Python 3.\n' >> "$result_file"
+    return 0
+  fi
+  if ! python3 "${BIDENT_ROOT}/lib/ghostcat.py" collect "$result_file" "$scope_file"; then
+    printf 'Ghostcat: Incomplete: could not validate or save retrieved files.\n'
+    printf '\n[-] Auxiliary failed: Ghostcat loot validation or copy failed.\n' >> "$result_file"
+  else
+    while IFS= read -r saved_file; do
+      [[ -n "$saved_file" ]] || continue
+      printf '%s[+] Apache Tomcat AJP File Read (Ghostcat): Found and verified.%s\n' "${CLR_GREEN:-}" "${CLR_RESET:-}"
+      printf '    Saved file: %s\n' "$saved_file"
+    done < <(python3 "${BIDENT_ROOT}/lib/ghostcat.py" read "$result_file" "$scope_file" paths)
+  fi
+}
+
+msf_finding_title() {
+  case "${1##*/}" in
+    ftp_anonymous_*) printf 'FTP Anonymous Enabled' ;;
+    smtp_relay_*) printf 'SMTP Open Relay' ;;
+    smb_ms17_010_*) printf 'Server Message Block (SMB) MS17-010 (EternalBlue) Vulnerability' ;;
+    tomcat_ghostcat_*) printf 'Apache Tomcat AJP File Read (Ghostcat)' ;;
+    rdp_scanner_*) printf 'Remote Desktop Protocol Detection' ;;
+    cve_2019_0708_bluekeep_*) printf 'Remote Desktop Protocol (RDP) BlueKeep Vulnerability' ;;
+    vnc_none_auth_*) printf 'Virtual Network Computing (VNC) None Authentication' ;;
+    nbname_*) printf 'NetBIOS Information Disclosure' ;;
+    snmp_login_*) printf 'SNMP Default/Weak Community String' ;;
+    snmp_enumusers_*) printf 'SNMP Users Enumeration' ;;
+    snmp_enumshares_*) printf 'SNMP Shares Enumeration' ;;
+    snmp_enum_*) printf 'SNMP Information Disclosure' ;;
+    *) printf 'Metasploit check' ;;
+  esac
+}
+
+msf_notify_result() {
+  local file="$1" status="${2:-0}" title endpoints failures reason
+  title="$(msf_finding_title "$file")"
+  # Reuse the report classifier; never print its endpoint list to the terminal.
+  if [[ "${file##*/}" != tomcat_ghostcat_tcp_8009.txt ]]; then
+    endpoints="$(msf_finding_lines "$file" endpoints)"
+    if [[ -n "$endpoints" ]]; then
+      printf '%s[+] %s: Found and verified.%s\n' "${CLR_GREEN:-}" "$title" "${CLR_RESET:-}"
+    fi
+  fi
+  failures="$(msf_failure_lines "$file")"
+  if [[ "$status" != 0 || -n "$failures" ]]; then
+    if [[ "$status" == 124 || "$status" == 137 || "$status" == 143 ]]; then
+      reason='check timed out'
+    elif [[ "$status" != 0 ]]; then
+      reason="process exited with status $status"
+    else
+      reason='module or connection error'
+    fi
+    printf '%s[!] %s: Incomplete: %s.%s\n' "${CLR_YELLOW:-}" "$title" "$reason" "${CLR_RESET:-}"
+    printf '    Details: %s\n' "$file"
+  fi
 }
