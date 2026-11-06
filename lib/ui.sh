@@ -79,10 +79,6 @@ Examples:
       Scan all ports and allow each Metasploit module run up to 5 minutes.
   sudo ./bident.sh --resume results/
       Continue from saved results.
-
-Open report.html inside the results folder when finished.
-Use only on systems you are authorized to test. Review findings and evidence
-before acting; automated results may be incomplete or contain false positives.
 BIDENT_HELP
 }
 
