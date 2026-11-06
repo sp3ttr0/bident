@@ -1592,14 +1592,11 @@ generate_html_report() {
       gap: 14px;
     }
     .report-mark {
-      background: var(--panel);
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      box-shadow: var(--shadow);
+      display: block;
       flex: 0 0 auto;
-      height: 72px;
-      padding: 8px;
-      width: 62px;
+      height: 128px;
+      padding: 0;
+      width: 102px;
     }
     .copy-targets-toolbar {
       align-items: center;
@@ -1984,6 +1981,7 @@ generate_html_report() {
       overflow: hidden;
     }
     .open-ports-wrap {
+      margin-top: 24px;
       max-height: min(620px, 64vh);
       overflow: auto;
       padding-right: 4px;
@@ -2283,6 +2281,14 @@ generate_html_report() {
       .theme-toggle { width: 42px; }
       .report-section, .notice[aria-label="Scan details"] { padding: 14px; }
     }
+    .report-section > h2,
+    .notice[aria-label="Scan details"] > h2,
+    .report-section > .section-heading,
+    .notice.disclaimer > .disclaimer-heading { margin-bottom: 24px; }
+    .report-section > h2 + *,
+    .notice[aria-label="Scan details"] > h2 + *,
+    .report-section > .section-heading + *,
+    .notice.disclaimer > .disclaimer-heading + * { margin-top: 0; }
   </style>
 </head>
 <body>
@@ -2290,7 +2296,7 @@ generate_html_report() {
 HTML
     printf '  <header class="report-header">\n'
     printf '    <div class="brand">\n'
-    printf '      <svg class="report-mark" viewBox="0 0 256 320" role="img" aria-label="Bident logo"><defs><linearGradient id="reportRedSteel" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="#2a0202"/><stop offset="0.42" stop-color="#7b0d0d"/><stop offset="1" stop-color="#190101"/></linearGradient><linearGradient id="reportHandleSteel" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="#111318"/><stop offset="0.5" stop-color="#3a3d43"/><stop offset="1" stop-color="#050608"/></linearGradient></defs><path d="M83 292h90l-14-92c28-21 51-58 48-113-2-36-13-66-31-87 2 48-6 91-23 128-9 20-18 34-25 43-7-9-16-23-25-43C86 91 78 48 80 0 62 21 51 51 49 87c-3 55 20 92 48 113L83 292z" fill="#07080b" stroke="#030303" stroke-width="7" stroke-linejoin="round"/><path d="M87 184c-18-16-31-46-27-91 2-21 8-40 18-56-4 36 2 72 16 105 7 17 16 32 26 45-12 1-23 0-33-3z" fill="url(#reportRedSteel)" stroke="#120101" stroke-width="5" stroke-linejoin="round"/><path d="M169 184c18-16 31-46 27-91-2-21-8-40-18-56 4 36-2 72-16 105-7 17-16 32-26 45 12 1 23 0 33-3z" fill="url(#reportRedSteel)" stroke="#120101" stroke-width="5" stroke-linejoin="round"/><path d="M111 300h34l-5-82h-24l-5 82z" fill="url(#reportHandleSteel)" stroke="#030303" stroke-width="6" stroke-linejoin="round"/><path d="M100 204c9 11 19 17 28 17s19-6 28-17c-7 33-16 51-28 51s-21-18-28-51z" fill="#300202" stroke="#090101" stroke-width="5" stroke-linejoin="round"/><g transform="translate(98 194)"><path d="M30 2c18 0 30 14 30 31 0 11-5 18-13 23v17H13V56C5 51 0 44 0 33 0 16 12 2 30 2z" fill="#efefef" stroke="#080808" stroke-width="6" stroke-linejoin="round"/><path d="M14 34c0-6 4-11 10-11 5 0 9 4 9 10 0 7-5 11-11 11-5 0-8-4-8-10z" fill="#050505"/><path d="M36 33c0-6 4-10 9-10 6 0 10 5 10 11 0 6-3 10-8 10-6 0-11-4-11-11z" fill="#050505"/><path d="M30 42l-7 11h14l-7-11z" fill="#050505"/><path d="M18 63h24" fill="none" stroke="#050505" stroke-width="5" stroke-linecap="round"/><path d="M22 57v16M30 56v17M38 57v16" fill="none" stroke="#050505" stroke-width="4" stroke-linecap="round"/></g><path d="M93 292h70" fill="none" stroke="#050505" stroke-width="12" stroke-linecap="round"/></svg>\n'
+    printf '      <svg class="report-mark" viewBox="0 0 240 280" role="img" aria-label="Hades Bident logo" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="hadesRed" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#030304"/><stop offset=".22" stop-color="#230505"/><stop offset=".5" stop-color="#d12b30"/><stop offset=".72" stop-color="#750a10"/><stop offset="1" stop-color="#030304"/></linearGradient><linearGradient id="hadesSteel" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#101116"/><stop offset=".25" stop-color="#252730"/><stop offset=".48" stop-color="#555963"/><stop offset=".62" stop-color="#333640"/><stop offset="1" stop-color="#14161c"/></linearGradient></defs><g transform="rotate(28 110 140)"><path d="m103 157 17 1-3 91-9 10-8-10z" fill="url(#hadesSteel)" stroke="#101117" stroke-width="3"/><path d="M108 166c-3-20-9-32-20-47L67 89c-5-8-4-16 0-27C75 42 79 22 78 7c11 27 7 50 1 69-2 6-1 10 3 15l26 26c4 4 8 5 12 2l28-24c6-5 7-9 7-17-1-26 4-49 18-68-6 25-5 46-2 68 3 19-1 26-14 36l-28 24c-6 6-10 16-10 29z" fill="url(#hadesRed)" stroke="#030304" stroke-width="5" stroke-linejoin="round"/><path d="M78 24c4 20-1 40-5 51-2 8 0 13 5 19l27 29m62-94c-7 18-9 36-7 52 1 11-2 17-10 23l-25 21" fill="none" stroke="#ed4448" stroke-width="2.3" stroke-linecap="round" opacity=".75"/><path d="m103 145 21 2-2 42-22-2z" fill="url(#hadesSteel)" stroke="#21171b" stroke-width="3"/><path d="m102 148 22 7m-23 2 22 7m-23 2 22 7m-22 2 21 7m-21 2 21 7" fill="none" stroke="#870e18" stroke-width="4.5" stroke-linecap="round"/><path d="m102 151 21 7m-23 2 22 7m-22 2 21 7m-21 2 21 7" fill="none" stroke="#080507" stroke-width="1.8"/><path d="m107 196-2 48" stroke="#858a95" stroke-width="1.5" opacity=".45"/></g></svg>\n'
     printf '      <div>\n'
     printf '        <h1>Bident Network Security Assessment Report</h1>\n'
     printf '        <p class="muted">Generated %s</p>\n' "$(html_escape_text "$generated_at")"

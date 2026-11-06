@@ -222,7 +222,7 @@ run_msf_auxiliary_checks() {
       printf '%sMetasploit Timeout:%s Disabled because timeout command was not found\n' "$CLR_YELLOW" "$CLR_RESET"
     fi
   fi
-  print_progress_bar "Metasploit Progress" "$completed_modules" "$module_count"
+  print_progress_bar "Metasploit Status" "$completed_modules" "$module_count"
   [[ -t 1 ]] && printf '\n'
 
   for index in "${!rc_files[@]}"; do
@@ -232,14 +232,12 @@ run_msf_auxiliary_checks() {
     msf_print_modules_for_rc "$rc_file" "${rc_labels[$index]}"
     status=0
     result_file="${result_files[$index]}"
-    {
-      printf '\n===== %s :: %s =====\n' "$(date '+%Y-%m-%d %H:%M:%S')" "${rc_labels[$index]}"
-      if [[ "${MSF_TIMEOUT:-0}" =~ ^[0-9]+$ && "${MSF_TIMEOUT:-0}" -gt 0 ]] && command_available timeout; then
-        timeout --preserve-status "$MSF_TIMEOUT" msfconsole -q -r "$rc_file"
-      else
-        msfconsole -q -r "$rc_file"
-      fi
-    } > "$result_file" 2>&1 || status=$?
+    printf '\n===== %s :: %s =====\n' "$(date '+%Y-%m-%d %H:%M:%S')" "${rc_labels[$index]}" > "$result_file"
+    if [[ "${MSF_TIMEOUT:-0}" =~ ^[0-9]+$ && "${MSF_TIMEOUT:-0}" -gt 0 ]] && command_available timeout; then
+      run_status_logged "$(msf_finding_title "$result_file")" "$result_file" timeout --preserve-status "$MSF_TIMEOUT" msfconsole -q -r "$rc_file" || status=$?
+    else
+      run_status_logged "$(msf_finding_title "$result_file")" "$result_file" msfconsole -q -r "$rc_file" || status=$?
+    fi
     printf '\nBident Metasploit process exit: %s\n' "$status" >> "$result_file"
     if [[ "${rc_labels[$index]}" == 'tcp/8009 tomcat_ghostcat' ]]; then
       msf_collect_ghostcat_loot "$result_file" "${MSF_DIR}/targets_tcp_8009.txt"
@@ -248,7 +246,7 @@ run_msf_auxiliary_checks() {
     printf '%s\t%s\n' "${rc_labels[$index]}" "$status" >> "${MSF_DIR}/run_status.tsv"
     msf_notify_result "$result_file" "$status"
     completed_modules=$((completed_modules + port_module_count))
-    print_progress_bar "Metasploit Progress" "$completed_modules" "$module_count"
+    print_progress_bar "Metasploit Status" "$completed_modules" "$module_count"
     if [[ -t 1 && "$completed_modules" -lt "$module_count" ]]; then
       printf '\n'
     fi

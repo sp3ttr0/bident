@@ -6,7 +6,30 @@ run_nse_check() {
   slug="$(printf '%s' "$label" | tr -c '[:alnum:]_-' '_')"
   mkdir -p "$LOG_DIR"
   log_file="${LOG_DIR}/nse_${slug}.log"
-  if "$@" 2>&1 | tee "$log_file"; then
+  local command=("$@")
+  # Request periodic status from Nmap without exposing script results.
+  if [[ "${command[0]##*/}" == nmap ]]; then
+    command=("${command[0]}" --stats-every 5s "${command[@]:1}")
+  fi
+  : > "$log_file"
+  print_progress_bar "$label Status" 0 100
+  if "${command[@]}" 2>&1 | (
+    current=0
+    while IFS= read -r line || [[ -n "$line" ]]; do
+      printf '%s\n' "$line" >> "$log_file" || exit 1
+      # Nmap status reflects its current phase, not a reliable overall ETA.
+      if [[ "$line" == *'NSE Timing:'* || "$line" == *'Script scan Timing:'* ]]; then
+        if [[ "$line" =~ ([0-9]+)([.][0-9]+)?% ]]; then
+          progress=$((10#${BASH_REMATCH[1]}))
+          ((progress < 100)) || progress=99
+          if ((progress > current)); then
+            current="$progress"
+            print_progress_bar "$label Status" "$current" 100
+          fi
+        fi
+      fi
+    done
+  ); then
     rc=0
   else
     pipeline_status=("${PIPESTATUS[@]}")
@@ -22,7 +45,10 @@ run_nse_check() {
   fi
   printf '%s\t%s\t%s\n' "$label" "$status" "$log_file" >> "${LOG_DIR}/nse_status.tsv"
   if [[ "$status" == Incomplete:* ]]; then
-    printf '%s%s: %s. Continuing remaining checks.%s\n' "$CLR_YELLOW" "$label" "$status" "$CLR_RESET"
+    [[ ! -t 1 ]] || printf '\n'
+    printf '%s%s: %s. Details: %s. Continuing remaining checks.%s\n' "$CLR_YELLOW" "$label" "$status" "$log_file" "$CLR_RESET"
+  else
+    print_progress_bar "$label Status" 100 100
   fi
   return 0
 }
@@ -130,7 +156,12 @@ run_external_capture() {
   local label="$1" output="$2" rc=0 status slug log_file tool
   shift 2
   tool="${1##*/}"
-  run_with_timeout "$@" > "$output" 2>&1 || rc=$?
+  : > "$output"
+  if [[ "$label" == *'startup check' ]]; then
+    run_with_timeout "$@" >> "$output" 2>&1 || rc=$?
+  else
+    run_status_logged "$label" "$output" run_with_timeout "$@" || rc=$?
+  fi
   if [[ "$label" == 'Unauthenticated Remote Procedure Call' && "$tool" == rpcclient && ( "$rc" -eq 0 || "$rc" -eq 1 ) ]] && rpc_anonymous_access_denied "$output"; then
     return 0
   fi
@@ -321,7 +352,7 @@ run_ssh_audit_check() {
 
   total_targets="$(wc -l < "$targets_file" | tr -d '[:space:]')"
   rm -f ${TOOL_DIR}/ssh-audit_results.txt
-  print_progress_bar "ssh-audit Progress" "$completed_targets" "$total_targets"
+  print_progress_bar "ssh-audit Status" "$completed_targets" "$total_targets"
 
   while IFS= read -r target; do
     [[ -n "${target:-}" ]] || continue
@@ -330,7 +361,7 @@ run_ssh_audit_check() {
       incomplete=true
       rm -f "$temp_output"
       completed_targets=$((completed_targets + 1))
-      print_progress_bar "ssh-audit Progress" "$completed_targets" "$total_targets"
+      print_progress_bar "ssh-audit Status" "$completed_targets" "$total_targets"
       continue
     fi
     if result_output_has_finding "Weak SSH Ciphers" "$temp_output"; then
@@ -340,7 +371,7 @@ run_ssh_audit_check() {
     fi
     rm -f "$temp_output"
     completed_targets=$((completed_targets + 1))
-    print_progress_bar "ssh-audit Progress" "$completed_targets" "$total_targets"
+    print_progress_bar "ssh-audit Status" "$completed_targets" "$total_targets"
   done < "$targets_file"
 
   if [[ "$finding_found" == true ]]; then
@@ -390,7 +421,7 @@ run_tls_target() {
     rc=125
     printf '%sInstall GNU coreutils (timeout/gtimeout) to run bounded TLS checks.%s\n' "$CLR_YELLOW" "$CLR_RESET"
   else
-    run_unprivileged "$runner" --kill-after=10s "${TLS_TIMEOUT}s" "${tool_args[@]}" "$entry" >> "$outfile" 2>&1 || rc=$?
+    run_status_logged "$tool" "$outfile" run_unprivileged "$runner" --kill-after=10s "${TLS_TIMEOUT}s" "${tool_args[@]}" "$entry" || rc=$?
   fi
   if [[ "$rc" -eq 0 ]] && external_output_has_error "$outfile" "$output_start"; then
     status='Incomplete: tool or connection error'
@@ -470,22 +501,22 @@ run_ssl_external_checks() {
   if [[ "$has_testssl" == true ]]; then
     printf '%sRunning testssl (Primary SSL/TLS Check)%s\n' "$CLR_CYAN" "$CLR_RESET"
     completed_targets=0
-    print_progress_bar "testssl Progress" "$completed_targets" "$total_targets"
+    print_progress_bar "testssl Status" "$completed_targets" "$total_targets"
     for entry in "${ssl_targets[@]}"; do
       run_tls_target "${TOOL_DIR}/testssl_results.txt" testssl "$entry"
       completed_targets=$((completed_targets + 1))
-      print_progress_bar "testssl Progress" "$completed_targets" "$total_targets"
+      print_progress_bar "testssl Status" "$completed_targets" "$total_targets"
     done
   fi
 
   if [[ "$has_sslscan" == true ]]; then
     printf '%sRunning sslscan (SSL/TLS Cross-check)%s\n' "$CLR_CYAN" "$CLR_RESET"
     completed_targets=0
-    print_progress_bar "sslscan Progress" "$completed_targets" "$total_targets"
+    print_progress_bar "sslscan Status" "$completed_targets" "$total_targets"
     for entry in "${ssl_targets[@]}"; do
       run_tls_target "${TOOL_DIR}/sslscan_results.txt" sslscan "$entry"
       completed_targets=$((completed_targets + 1))
-      print_progress_bar "sslscan Progress" "$completed_targets" "$total_targets"
+      print_progress_bar "sslscan Status" "$completed_targets" "$total_targets"
     done
   fi
 

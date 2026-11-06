@@ -323,3 +323,51 @@ print_final_summary() {
     print_summary_row 'JSON Summary:' 'summary.json' "$CLR_BLUE"
   fi
 }
+
+# Tools without reliable progress percentages show a running status animation.
+# The command stays in the foreground; only the display updater is backgrounded.
+run_status_logged() (
+  local label="$1" output="$2" rc=0 status_display_pid="" output_start=1 display_failed=false
+  shift 2
+  cleanup_status_display() {
+    if [[ -n "$status_display_pid" ]]; then
+      kill "$status_display_pid" 2>/dev/null || true
+      wait "$status_display_pid" 2>/dev/null || true
+      status_display_pid=""
+    fi
+  }
+  trap cleanup_status_display EXIT
+  if [[ -f "$output" ]]; then output_start=$(( $(wc -l < "$output") + 1 )); fi
+  print_progress_bar "$label Status" 0 1
+  if [[ -t 1 ]]; then
+    (
+      elapsed=0
+      while :; do
+        bar=""; position=$((elapsed % 28))
+        for ((slot=0; slot<28; slot++)); do
+          if ((slot == position)); then bar+="#"; else bar+="."; fi
+        done
+        printf '\r%s%s Status:%s [%s] Running (%ss)\033[K' "${CLR_CYAN:-}" "$label" "${CLR_RESET:-}" "$bar" "$elapsed"
+        sleep 1
+        elapsed=$((elapsed + 1))
+      done
+    ) &
+    status_display_pid=$!
+  fi
+  "$@" >> "$output" 2>&1 || rc=$?
+  cleanup_status_display
+  # Some tools exit zero while reporting a runtime failure in their output.
+  if declare -F external_output_has_error >/dev/null && external_output_has_error "$output" "$output_start"; then
+    display_failed=true
+  fi
+  if declare -F msf_failure_lines >/dev/null && [[ "${output##*/}" == *_tcp_*.txt || "${output##*/}" == *_udp_*.txt ]]; then
+    [[ -z "$(msf_failure_lines "$output")" ]] || display_failed=true
+  fi
+  if [[ "$rc" -eq 0 && "$display_failed" == false ]]; then
+    [[ ! -t 1 ]] || printf '\r\033[K'
+    print_progress_bar "$label Status" 1 1
+  elif [[ -t 1 ]]; then
+    printf '\n'
+  fi
+  return "$rc"
+)
