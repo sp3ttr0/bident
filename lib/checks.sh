@@ -1,3 +1,10 @@
+nse_output_has_script_timeout() {
+  # Match the NSE engine's expired-script diagnostic at debug levels 1/2.
+  # Configuration notices and script/socket debug output are not expiration.
+  # Consume the whole log rather than stopping early under pipefail.
+  grep -E '^NSE:[[:space:]]+[[:alnum:]_-]+([[:space:]]+[MW]:[[:xdigit:]]+)?([[:space:]]+against[[:space:]]+.+)?[[:space:]]+timed out[.]?[[:space:]]*$' "$1" > /dev/null
+}
+
 run_nse_check() {
   local label="$1"
   shift
@@ -38,7 +45,7 @@ run_nse_check() {
   fi
   if [[ "$rc" -ne 0 ]]; then
     status="Incomplete: command failed (exit ${rc})"
-  elif grep -Eiq 'NSE:.*(timed out|timeout)|Script.*timed out' "$log_file"; then
+  elif nse_output_has_script_timeout "$log_file"; then
     status="Incomplete: script timeout"
   else
     status="Finished; review output"
@@ -357,7 +364,7 @@ run_ssh_audit_check() {
   while IFS= read -r target; do
     [[ -n "${target:-}" ]] || continue
     temp_output="$(mktemp "${TMPDIR:-/tmp}/bident_check.XXXXXX")"
-    if ! run_external_capture "ssh-audit ${target}:22" "$temp_output" "$ssh_audit_cmd" "$target"; then
+    if ! run_external_capture "ssh-audit" "$temp_output" "$ssh_audit_cmd" "$target"; then
       incomplete=true
       rm -f "$temp_output"
       completed_targets=$((completed_targets + 1))
@@ -398,7 +405,7 @@ run_dns_dig_checks() {
   while read -r target port; do
     [[ -n "$target" ]] || continue
     temp_output="$(mktemp "${TMPDIR:-/tmp}/bident_dns.XXXXXX")"
-    run_external_capture "DNSSEC ${target}:${port}" "$temp_output" "${dig_args[@]}" +dnssec "@${target}" google.com A || true
+    run_external_capture "DNSSEC" "$temp_output" "${dig_args[@]}" +dnssec "@${target}" google.com A || true
     rm -f "$temp_output"
     run_logged_check "DNS Recursion Enabled" "${TOOL_DIR}/dns_recursion_enabled.txt" "${dig_args[@]}" "@${target}" google.com A
   done < <(open_target_ports any 53)
@@ -550,7 +557,7 @@ run_ike_weak_encryption_check() {
 
     printf '%sChecking For IKE VPN Peer Weak Encryption:%s %s:%s\n' "$CLR_CYAN" "$CLR_RESET" "$target" "$port"
     temp_output="$(mktemp "${TMPDIR:-/tmp}/bident_check.XXXXXX")"
-    if ! run_external_capture "IKE ${target}:${port}" "$temp_output" ike-scan -M "$target"; then
+    if ! run_external_capture "IKE" "$temp_output" ike-scan -M "$target"; then
       rm -f "$temp_output"
       continue
     fi
