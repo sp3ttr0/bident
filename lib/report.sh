@@ -1513,45 +1513,47 @@ generate_html_report() {
   <style>
     :root {
       color-scheme: light;
-      --bg: #eef4ff;
-      --bg-accent: #f7fbff;
-      --panel: #ffffff;
-      --text: #18202a;
-      --muted: #657080;
-      --line: #cfd9ea;
-      --accent: #2457c5;
-      --accent-2: #0f9f8f;
-      --accent-3: #d97706;
-      --chip: #e8f0ff;
-      --chip-text: #153f9f;
-      --code-bg: #101827;
-      --code-text: #e5eefc;
-      --shadow: 0 12px 30px rgba(31, 65, 120, 0.10);
+      --bg: #f2edf7;
+      --bg-accent: #f2edf7;
+      --panel: #fcf9ff;
+      --text: #24192f;
+      --muted: #6c5b7b;
+      --line: #d6c9e3;
+      --accent: #694a9d;
+      --accent-2: #765391;
+      --accent-3: #b27c32;
+      --chip: #e9dff2;
+      --chip-text: #563671;
+      --code-bg: #191222;
+      --code-text: #e9e7ef;
+      --action-start: #694a9d;
+      --action-end: #563671;
+      --shadow: none;
     }
     [data-theme="dark"] {
       color-scheme: dark;
-      --bg: #0c1220;
-      --bg-accent: #111a2d;
-      --panel: #151f33;
-      --text: #edf4ff;
-      --muted: #9fb0c9;
-      --line: #2a3954;
-      --accent: #6ea8ff;
-      --accent-2: #39d5c4;
-      --accent-3: #f7b955;
-      --chip: #1d345d;
-      --chip-text: #bfdbff;
-      --code-bg: #070b12;
-      --code-text: #e7edf7;
-      --shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
+      --bg: #090710;
+      --bg-accent: #090710;
+      --panel: #110d1b;
+      --text: #e9e7ef;
+      --muted: #aaa0ba;
+      --line: #30253f;
+      --accent: #b09acb;
+      --accent-2: #9276ce;
+      --accent-3: #e0ae58;
+      --chip: #1c142b;
+      --chip-text: #cbb9df;
+      --code-bg: #0c0913;
+      --code-text: #e9e7ef;
+      --action-start: #795cb4;
+      --action-end: #60417e;
+      --shadow: none;
     }
     body {
       margin: 0;
-      background:
-        radial-gradient(circle at top left, color-mix(in srgb, var(--accent) 18%, transparent), transparent 34rem),
-        linear-gradient(135deg, var(--bg), var(--bg-accent));
+      background: var(--bg);
       color: var(--text);
-      font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font: 15px/1.65 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       min-height: 100vh;
     }
     main {
@@ -2269,9 +2271,9 @@ generate_html_report() {
     .brand > div { min-width: 0; }
     .theme-toggle { flex: 0 0 auto; width: 42px; height: 42px; }
     .report-section, .notice[aria-label="Scan details"] {
-      padding: 20px; margin: 20px 0; border-radius: 12px;
+      padding: 24px; margin: 24px 0; border-radius: 4px;
       border: 1px solid var(--line);
-      border-top: 5px solid #6ea8ff;
+      border-top: 2px solid var(--accent-2);
       background: var(--panel);
     }
     .report-section > h2, .report-section .section-heading h2,
@@ -2289,6 +2291,21 @@ generate_html_report() {
     .notice[aria-label="Scan details"] > h2 + *,
     .report-section > .section-heading + *,
     .notice.disclaimer > .disclaimer-heading + * { margin-top: 0; }
+    /* Pencil: restrained plum panels, fine borders and purple actions. */
+    h1 { font-weight: 600; letter-spacing: -0.7px; }
+    h2 { font-weight: 600; letter-spacing: -0.4px; }
+    .report-header { border-bottom: 1px solid var(--line); padding-bottom: 24px; margin-bottom: 28px; }
+    .report-header .muted, .metric > span, .service-filter label,
+    .report-footer { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .report-header .muted { font-size: 11px; }
+    .metric > span { font-size: 11px; letter-spacing: 0.4px; }
+    .metric, .port-card, .artifact, .empty, .service-table-wrap,
+    .service-filter select, .service-search, .port-card > .artifact { border-radius: 4px; }
+    .copy-targets { background: linear-gradient(110deg, var(--action-start), var(--action-end)); color: #fff; border-color: #9176ab; border-radius: 3px; font-size: 13px; font-weight: 600; }
+    .copy-targets:hover { background: linear-gradient(110deg, var(--action-start), var(--action-end)); filter: brightness(1.12); }
+    .report-toggle { border-radius: 4px; color: var(--accent); }
+    .theme-toggle { box-shadow: none; color: var(--accent); border-radius: 4px; }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
   </style>
 </head>
 <body>
