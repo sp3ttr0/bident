@@ -2,6 +2,8 @@
 
 Network VAPT Toolkit by **sp3ttr0**. Scans hosts and ports, runs security checks, and generates an HTML report with findings and evidence.
 
+The report includes **Known Vulnerabilities** from explicit positive Nmap script results, with affected Host:Port lists, CVEs when identified, copy buttons, and full evidence. CVE references alone are excluded.
+
 ## Setup
 
 Designed for Kali/Parrot-style Debian systems.
