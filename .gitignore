@@ -13,6 +13,7 @@
 !/lib/config.sh
 !/lib/deps.sh
 !/lib/ghostcat.py
+!/lib/nmap_vulns.py
 !/lib/metasploit.sh
 !/lib/ports.sh
 !/lib/report.sh

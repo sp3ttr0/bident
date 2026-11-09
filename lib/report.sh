@@ -1082,6 +1082,33 @@ print_report_section_heading() {
   printf '<button class="report-toggle" id="%s" type="button" title="Collapse all %s" aria-label="Collapse all %s"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m8 3 4 4 4-4M4 10h16M4 14h16m-12 7 4-4 4 4"/></svg></button></nav></div><span class="report-toggle-status" id="%s" role="status" aria-live="polite"></span>\n' "$collapse_id" "$scope" "$scope" "$status_id"
 }
 
+append_known_vulnerabilities_section() {
+  local outfile="$1" cards count=0
+  cards="$(mktemp "${TMPDIR:-/tmp}/bident_known_vulns.XXXXXX")"
+  if command -v python3 >/dev/null 2>&1 && [[ -f "$TARGETS_FILE" ]]; then
+    if ! python3 "${BIDENT_ROOT}/lib/nmap_vulns.py" "$TARGETS_FILE" "$NSE_DIR" "$SCAN_DIR" > "$cards"; then
+      rm -f "$cards"
+      printf '  <section class="report-section" id="knownVulnerabilities"><h2>Known Vulnerabilities</h2><p class="muted">Extraction incomplete. Review saved Nmap output under Core Artifacts.</p></section>\n' >> "$outfile"
+      return
+    fi
+  fi
+  if ! command -v python3 >/dev/null 2>&1 || [[ ! -f "$TARGETS_FILE" ]]; then
+    printf '  <section class="report-section" id="knownVulnerabilities"><h2>Known Vulnerabilities</h2><p class="muted">Extraction incomplete: Python 3 or saved scope is unavailable. Review saved Nmap output under Core Artifacts.</p></section>\n' >> "$outfile"
+    rm -f "$cards"
+    return
+  fi
+  count="$(awk '/^<li><details class="finding-panel">/ {n++} END {print n+0}' "$cards")"
+  {
+    printf '  <section class="report-section" id="knownVulnerabilities" aria-label="Known Vulnerabilities">\n'
+    print_report_section_heading 'Known Vulnerabilities' expandVulnerabilities collapseVulnerabilities vulnerabilityToggleStatus vulnerabilities "$count"
+    printf '<p class="muted">Review each finding and its full evidence carefully. These are explicit positive Nmap script results; CVE references, version matches, and inconclusive results alone are excluded.</p>\n'
+    if [[ -s "$cards" ]]; then printf '<ul class="finding-list">\n'; cat "$cards"; printf '</ul>\n'
+    else printf '<div class="empty">No explicit port-attributed vulnerability results were found in saved Nmap output.</div>\n'; fi
+    printf '</section>\n'
+  } >> "$outfile"
+  rm -f "$cards"
+}
+
 append_findings_summary_section() {
   local outfile="$1"
   local temp_file
@@ -1742,6 +1769,7 @@ generate_html_report() {
     }
     .section-heading h2 { margin: 0; min-width: 0; }
     .section-count { color: var(--muted); font-size: 0.8em; font-weight: 600; white-space: nowrap; margin-left: 6px; }
+    #knownVulnerabilities .section-count,
     #findingsSummary .section-count,
     [data-credential-copy] .section-count {
       display: inline-flex;
@@ -2420,6 +2448,7 @@ HTML
   printf '  </section>\n' >> "$report_file"
   append_findings_summary_section "$report_file"
   append_credential_summary_section "$report_file"
+  append_known_vulnerabilities_section "$report_file"
 
   {
     printf '  <section class="report-section" aria-label="Core Artifacts"><h2>Core Artifacts</h2>\n'
@@ -2471,6 +2500,8 @@ HTML
   document.getElementById('collapseAll').addEventListener('click', () => toggleSectionDetails('#findingsSummary details', 'reportToggleStatus', false));
   document.getElementById('expandCredentials').addEventListener('click', () => toggleSectionDetails('[data-credential-copy] details', 'credentialToggleStatus', true));
   document.getElementById('collapseCredentials').addEventListener('click', () => toggleSectionDetails('[data-credential-copy] details', 'credentialToggleStatus', false));
+  document.getElementById('expandVulnerabilities')?.addEventListener('click', () => toggleSectionDetails('#knownVulnerabilities details', 'vulnerabilityToggleStatus', true));
+  document.getElementById('collapseVulnerabilities')?.addEventListener('click', () => toggleSectionDetails('#knownVulnerabilities details', 'vulnerabilityToggleStatus', false));
   // REPORT_TOGGLES_END
   // COPY_TARGETS_START
   async function copyAffectedTargets(button) {
