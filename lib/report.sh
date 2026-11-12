@@ -1540,40 +1540,44 @@ generate_html_report() {
   <style>
     :root {
       color-scheme: light;
-      --bg: #f2edf7;
-      --bg-accent: #f2edf7;
-      --panel: #fcf9ff;
-      --text: #24192f;
-      --muted: #6c5b7b;
-      --line: #d6c9e3;
-      --accent: #694a9d;
-      --accent-2: #765391;
-      --accent-3: #b27c32;
-      --chip: #e9dff2;
-      --chip-text: #563671;
-      --code-bg: #191222;
-      --code-text: #e9e7ef;
-      --action-start: #694a9d;
-      --action-end: #563671;
+      --bg: #f5f2e8;
+      --bg-accent: #f5f2e8;
+      --panel: #fffdf7;
+      --text: #292b26;
+      --muted: #66675e;
+      --line: #d8d3c0;
+      --accent: #80631c;
+      --accent-2: #80693b;
+      --accent-3: #a67623;
+      --chip: #ede7d5;
+      --chip-text: #80631c;
+      --code-bg: #151611;
+      --code-text: #f0eee7;
+      --action-start: #e5c05c;
+      --action-end: #cfa338;
+      --button-text: #201d13;
+      --action-border: #d1ad51;
       --shadow: none;
     }
     [data-theme="dark"] {
       color-scheme: dark;
-      --bg: #090710;
-      --bg-accent: #090710;
-      --panel: #110d1b;
-      --text: #e9e7ef;
-      --muted: #aaa0ba;
-      --line: #30253f;
-      --accent: #b09acb;
-      --accent-2: #9276ce;
+      --bg: #101110;
+      --bg-accent: #101110;
+      --panel: #191a18;
+      --text: #f0eee7;
+      --muted: #aba99f;
+      --line: #383a33;
+      --accent: #e3bc52;
+      --accent-2: #d7c58c;
       --accent-3: #e0ae58;
-      --chip: #1c142b;
-      --chip-text: #cbb9df;
-      --code-bg: #0c0913;
-      --code-text: #e9e7ef;
-      --action-start: #795cb4;
-      --action-end: #60417e;
+      --chip: #25261f;
+      --chip-text: #d7c58c;
+      --code-bg: #0c0d0b;
+      --code-text: #f0eee7;
+      --action-start: #e5c05c;
+      --action-end: #cfa338;
+      --button-text: #201d13;
+      --action-border: #d1ad51;
       --shadow: none;
     }
     body {
@@ -2320,7 +2324,7 @@ generate_html_report() {
     .notice[aria-label="Scan details"] > h2 + *,
     .report-section > .section-heading + *,
     .notice.disclaimer > .disclaimer-heading + * { margin-top: 0; }
-    /* Pencil: restrained plum panels, fine borders and purple actions. */
+    /* PEN: graphite panels, warm yellow accents and brushed-metal neutrals. */
     h1 { font-weight: 600; letter-spacing: -0.7px; }
     h2 { font-weight: 600; letter-spacing: -0.4px; }
     .report-header { border-bottom: 1px solid var(--line); padding-bottom: 24px; margin-bottom: 28px; }
@@ -2330,7 +2334,7 @@ generate_html_report() {
     .metric > span { font-size: 11px; letter-spacing: 0.4px; }
     .metric, .port-card, .artifact, .empty, .service-table-wrap,
     .service-filter select, .service-search, .port-card > .artifact { border-radius: 4px; }
-    .copy-targets { background: linear-gradient(110deg, var(--action-start), var(--action-end)); color: #fff; border-color: #9176ab; border-radius: 3px; font-size: 13px; font-weight: 600; }
+    .copy-targets { background: linear-gradient(110deg, var(--action-start), var(--action-end)); color: var(--button-text); border-color: var(--action-border); border-radius: 3px; font-size: 13px; font-weight: 600; }
     .copy-targets:hover { background: linear-gradient(110deg, var(--action-start), var(--action-end)); filter: brightness(1.12); }
     .report-toggle { border-radius: 4px; color: var(--accent); }
     .theme-toggle { box-shadow: none; color: var(--accent); border-radius: 4px; }
