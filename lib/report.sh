@@ -79,6 +79,7 @@ default_result_label() {
     s_ntp.txt) printf 'NTP NMAP Results' ;;
     s_netbios.txt) printf 'NetBIOS NMAP Results' ;;
     s_smb.txt) printf 'SMB NMAP Results' ;;
+    nxc_smb_enumeration_445.txt) printf 'NetExec SMB Enumeration Results' ;;
     s_snmp.txt) printf 'SNMP NMAP Results' ;;
     s_ldap.txt) printf 'LDAP NMAP Results' ;;
     s_ike.txt) printf 'IKE NMAP Results' ;;
@@ -898,6 +899,9 @@ append_finding_glob_item() {
 
 credential_candidate_lines() {
   local file="$1" msf_port=""
+  # This supplementary raw enumeration output is displayed under 445/TCP only.
+  # Its usernames, session labels and policy fields are not credential findings.
+  [[ "${file##*/}" != nxc_smb_enumeration_445.txt ]] || return 0
   if [[ "$file" =~ _(tcp|udp)_([0-9]+)[.]txt$ ]]; then msf_port="${BASH_REMATCH[2]}"; fi
 
   awk -v msf_port="$msf_port" '
@@ -1497,6 +1501,9 @@ append_port_result_files() {
     tcp/5800|tcp/5801|tcp/5900|tcp/5901) append_result_file_section "$outfile" s_vnc.txt && appended=0 ;;
   esac
 
+  if [[ "$proto" == tcp && "$port" == 445 ]]; then
+    append_result_file_section "$outfile" nxc_smb_enumeration_445.txt && appended=0
+  fi
   append_msf_result_files "$outfile" "$proto" "$port" && appended=0
   [[ "$appended" -eq 0 ]] || append_base_scan_port_evidence "$outfile" "$proto" "$port"
 }

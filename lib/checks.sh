@@ -159,6 +159,17 @@ rpc_anonymous_access_denied() {
     ! grep -Eiv "$denial|^[[:space:]]*$" "$output" > /dev/null
 }
 
+nxc_smb_enumeration_label() {
+  [[ "$1" == 'NetExec SMB Anonymous '* || "$1" == 'NetExec SMB Guest '* ]]
+}
+
+nxc_smb_access_refused() {
+  # Authentication and authorization refusals are useful raw evidence, not
+  # execution failures. Never let a refusal hide a traceback/transport error.
+  grep -Eiq '(NT_)?STATUS_(LOGON_FAILURE|ACCESS_DENIED|ACCOUNT_DISABLED|ACCOUNT_RESTRICTION|LOGON_TYPE_NOT_GRANTED|PASSWORD_EXPIRED|ACCOUNT_EXPIRED|PASSWORD_MUST_CHANGE|ACCOUNT_LOCKED_OUT)' "$1" &&
+    ! external_output_has_error "$1"
+}
+
 run_external_capture() {
   local label="$1" output="$2" rc=0 status slug log_file tool
   shift 2
@@ -172,6 +183,9 @@ run_external_capture() {
   if [[ "$label" == 'Unauthenticated Remote Procedure Call' && "$tool" == rpcclient && ( "$rc" -eq 0 || "$rc" -eq 1 ) ]] && rpc_anonymous_access_denied "$output"; then
     return 0
   fi
+  if [[ "$tool" == netexec && "$rc" -eq 1 ]] && nxc_smb_enumeration_label "$label" && nxc_smb_access_refused "$output"; then
+    rc=0
+  fi
   status=""
   if [[ "$tool" == ssh-audit && ( "$rc" -eq 2 || "$rc" -eq 3 ) ]]; then :
   elif [[ "$rc" -eq 124 || "$rc" -eq 137 ]]; then status="Incomplete: timeout or forced termination (exit ${rc})"
@@ -179,6 +193,10 @@ run_external_capture() {
   fi
   if external_output_has_error "$output"; then
     status='Incomplete: tool or connection error'
+  fi
+  if [[ "$tool" == netexec ]] && nxc_smb_enumeration_label "$label" &&
+      grep -Eiq '\[REMOVED\]|unrecognized arguments:|unknown option|no such option|not implemented' "$output"; then
+    status='Incomplete: enumeration unsupported by this NetExec version'
   fi
   if [[ -n "$status" ]]; then
     mkdir -p "$LOG_DIR"
@@ -297,6 +315,7 @@ run_smb_external_checks() {
   local relay_file="${TOOL_DIR}/targets_smb_relay.txt"
   local data_file
 
+  rm -f "${TOOL_DIR}/nxc_smb_enumeration_445.txt"
   if ! has_open_port tcp 445; then
     return
   fi
@@ -307,16 +326,17 @@ run_smb_external_checks() {
   fi
 
   if [[ "${NETEXEC_STARTUP_OK:-true}" == false ]]; then
-    rm -f "${TOOL_DIR}/nxc_smb_signing_false.txt" "${TOOL_DIR}/nxc_smbv1_true.txt"
+    rm -f "${TOOL_DIR}/nxc_smb_signing_false.txt" "${TOOL_DIR}/nxc_smbv1_true.txt" "${TOOL_DIR}/nxc_smb_enumeration_445.txt"
     printf '%sSkipping NetExec SMB Checks:%s Incomplete startup check; see Core Artifacts.\n' "$CLR_YELLOW" "$CLR_RESET"
     return 0
   fi
   if ! command_available netexec; then
+    rm -f "${TOOL_DIR}/nxc_smb_enumeration_445.txt"
     printf '%sSkipping NetExec SMB Checks:%s Command Not Found\n' "$CLR_YELLOW" "$CLR_RESET"
     return
   fi
 
-  rm -f "${TOOL_DIR}/nxc_smb_signing_false.txt" "${TOOL_DIR}/nxc_smbv1_true.txt"
+  rm -f "${TOOL_DIR}/nxc_smb_signing_false.txt" "${TOOL_DIR}/nxc_smbv1_true.txt" "${TOOL_DIR}/nxc_smb_enumeration_445.txt"
   # Input scope and NetExec output must be separate. Prepare the relay file
   # before dropping privileges; this also handles restrictive root umasks.
   : > "$relay_file"
@@ -328,6 +348,91 @@ run_smb_external_checks() {
   done
   run_logged_check "Misconfigured Server Message Block Signing" "${TOOL_DIR}/nxc_smb_signing_false.txt" netexec smb --gen-relay-list "$relay_file" "$targets_file"
   run_logged_check "SMBv1 Enabled" "${TOOL_DIR}/nxc_smbv1_true.txt" netexec smb "$targets_file"
+  run_smb_enumeration_checks "$targets_file"
+}
+
+record_smb_enumeration_unavailable() {
+  local help_output="$1" reason="$2" log_file
+  mkdir -p "$LOG_DIR"
+  log_file="$(mktemp "${LOG_DIR}/external_NetExec_SMB_Enumeration_options.XXXXXX")"
+  append_command_header "$log_file" netexec smb --help
+  printf '%s\n\n' "$reason" >> "$log_file"
+  cat "$help_output" >> "$log_file"
+  if [[ "${BIDENT_DROP_PRIVILEGES:-false}" == true && -n "${BIDENT_RUN_USER:-}" ]]; then
+    chown "$BIDENT_RUN_USER" "$log_file" || true
+  fi
+  printf 'NetExec SMB Enumeration\tIncomplete: %s\t0\t%s\n' "$reason" "$log_file" >> "${LOG_DIR}/external_status.tsv"
+  printf '%sNetExec SMB Enumeration: Incomplete: %s. Details: %s%s\n' "$CLR_YELLOW" "$reason" "$log_file" "$CLR_RESET"
+}
+
+run_smb_enumeration_checks() {
+  local targets_file="$1" outfile="${TOOL_DIR}/nxc_smb_enumeration_445.txt"
+  local help_output temp_output option target identity username operation label
+  local missing_options='' shares_supported=true no_write_check=false no_admin_check=false
+  local operations=()
+  local command=()
+
+  # Inspect the installed release: older NetExec uses --no-write-check,
+  # while newer releases make file creation an explicit opt-in.
+  help_output="$(mktemp "${TMPDIR:-/tmp}/bident_nxc_help.XXXXXX")"
+  if ! run_external_capture 'NetExec SMB enumeration startup check' "$help_output" netexec smb --help; then
+    rm -f "$help_output"
+    return 0
+  fi
+  if ! grep -Eq -- '(^|[[:space:],])--port([[:space:]=,]|$)' "$help_output"; then
+    record_smb_enumeration_unavailable "$help_output" 'the SMB port selection option is unavailable'
+    rm -f "$help_output"
+    return 0
+  fi
+  for operation in shares users groups pass-pol; do
+    if grep -Eq -- "(^|[[:space:],])--${operation}([[:space:]=,]|$)" "$help_output"; then
+      operations+=("$operation")
+    else
+      missing_options+=" --${operation}"
+    fi
+  done
+  if [[ -n "$missing_options" ]]; then
+    record_smb_enumeration_unavailable "$help_output" "unsupported SMB enumeration options:${missing_options}"
+  fi
+  if [[ "${#operations[@]}" -eq 0 ]]; then
+    rm -f "$help_output"
+    return 0
+  fi
+  if grep -Eq -- '(^|[[:space:],])--no-write-check([[:space:]=,]|$)' "$help_output"; then
+    no_write_check=true
+  elif ! grep -Eq -- '(^|[[:space:],])--file-write-check([[:space:]=,]|$)' "$help_output"; then
+    shares_supported=false
+    record_smb_enumeration_unavailable "$help_output" 'share enumeration skipped; read-only share checking is not supported by this NetExec version'
+  fi
+  if grep -Eq -- '(^|[[:space:],])--no-admin-check([[:space:]=,]|$)' "$help_output"; then
+    no_admin_check=true
+  fi
+  rm -f "$help_output"
+
+  temp_output="$(mktemp "${TMPDIR:-/tmp}/bident_nxc_output.XXXXXX")"
+  while IFS= read -r target; do
+    [[ -n "$target" ]] || continue
+    for identity in Anonymous Guest; do
+      username=''
+      [[ "$identity" != Guest ]] || username=guest
+      for operation in "${operations[@]}"; do
+        [[ "$operation" != shares || "$shares_supported" == true ]] || continue
+        label="NetExec SMB ${identity} ${operation}"
+        # Keep each operation isolated so one refused/unsupported query cannot
+        # prevent the remaining queries from running. No findings are inferred.
+        command=(netexec smb "$target" --port 445 -u "$username" -p '' "--${operation}")
+        if [[ "$no_admin_check" == true ]]; then command+=(--no-admin-check); fi
+        if [[ "$operation" == shares && "$no_write_check" == true ]]; then command+=(--no-write-check); fi
+        if run_external_capture "$label" "$temp_output" "${command[@]}"; then
+          append_command_header "$outfile" "${command[@]}"
+          printf 'Requested access: %s\nHost: %s\nPort: 445/tcp\n\n' "$identity" "$target" >> "$outfile"
+          cat "$temp_output" >> "$outfile"
+          printf '\n' >> "$outfile"
+        fi
+      done
+    done
+  done < "$targets_file"
+  rm -f "$temp_output"
 }
 
 run_ssh_audit_check() {
