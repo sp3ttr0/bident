@@ -624,30 +624,11 @@ append_affected_endpoint_list() {
   printf '</tbody></table></div></div>\n'
 }
 
-append_tls_cipher_table() {
-  local rows_file="$1" endpoints="$2" endpoint ciphers
-  printf '      <div data-affected-targets>\n'
-  print_copy_targets_button
-  printf '      <div class="service-table-wrap"><table class="service-table"><thead><tr><th>Host:Port</th><th>Weak/Deprecated Ciphers Found:</th></tr></thead><tbody>\n'
-  while IFS= read -r endpoint; do
-    ciphers="$(awk -F '\034' -v host="$endpoint" '$1 == host && $2 != "" && $2 !~ /^Category only:/ && !seen[$2]++ {value=value (value == "" ? "" : "\n") $2} END {print value}' "$rows_file")"
-    printf '        <tr><td>%s</td><td>' "$(html_escape_text "$endpoint")"
-    if [[ -n "$ciphers" ]]; then printf '%s\n' "$ciphers" | print_cipher_list
-    else printf '%s' 'Individual cipher names unavailable in saved output; rescan required.'; fi
-    printf '</td></tr>\n' 
-  done <<< "$endpoints"
-  printf '      </tbody></table></div></div>\n'
-}
-
 append_finding_full_evidence() {
-  local rows_file="$1" source matches
+  local rows_file="$1" source
   while IFS= read -r source; do
     [[ -s "$source" ]] || continue
-    matches="$(awk -F '\034' -v source="$source" -v endpoints="$(printf '%s' "$2" | tr '\n' ',')" '
-      BEGIN {split(endpoints, hosts, ","); for (i in hosts) valid[hosts[i]]=1}
-      {path=$3; sub(/:[0-9]+$/, "", path); if (path==source && ($1 in valid) && !seen[$3]++) refs=refs (refs=="" ? "" : ", ") $3}
-      END {print refs}' "$rows_file")"
-    printf '<details class="artifact"><summary>Full Evidence — %s</summary><p class="muted evidence-source">Matched source lines: %s</p><pre class="finding-evidence">' "$(html_escape_text "$source")" "$(html_escape_text "$matches")"
+    printf '<details class="artifact"><summary>Full Evidence — %s</summary><pre class="finding-evidence">' "$(html_escape_text "$source")"
     html_escape_file "$source"
     printf '</pre></details>\n'
   done < <(awk -F '\034' '{source=$3; sub(/:[0-9]+$/, "", source); if (!seen[source]++) print source}' "$rows_file")
@@ -1062,16 +1043,13 @@ append_tls_findings_summary() {
     {
       printf '    <li><details class="finding-panel">\n'
       printf '      <summary><div><strong>%s</strong><span>%s affected host(s)</span></div></summary>\n' "$(html_escape_text "$title")" "$(printf '%s\n' "$endpoints" | awk 'END {print NR}')"
-      if [[ "$id" != 6 ]]; then append_affected_endpoint_list "$endpoints"; fi
+      append_affected_endpoint_list "$endpoints"
       evidence_rows="$(mktemp "${TMPDIR:-/tmp}/bident_tls_evidence.XXXXXX")"
       while IFS=$'\034' read -r known endpoint source_line evidence cipher_detail; do
         [[ "$known" == "$id" ]] || continue
         printf '%s\034%s\034%s\034%s\n' "$endpoint" "$cipher_detail" "$source_line" "$evidence" >> "$evidence_rows"
       done < "$rows_file"
-      if [[ "$id" == 6 ]]; then
-        append_tls_cipher_table "$evidence_rows" "$endpoints"
-        append_finding_full_evidence "$evidence_rows" "$endpoints" false true
-      else append_finding_full_evidence "$evidence_rows" "$endpoints"; fi
+      append_finding_full_evidence "$evidence_rows" "$endpoints"
       rm -f "$evidence_rows"
       printf '    </details></li>\n'
     } >> "$outfile"
