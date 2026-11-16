@@ -1983,11 +1983,17 @@ generate_html_report() {
       margin-bottom: 5px;
       overflow: hidden;
     }
+    .port-pagination { display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin-top:18px; }
+    .port-pagination input, .port-pagination select, .port-page-button { font:inherit; color:var(--text); background:var(--panel); border:1px solid var(--line); border-radius:4px; padding:8px 12px; }
+    .port-pagination input { flex:1; min-width:180px; }
+    .port-page-button { cursor:pointer; }
+    .port-page-button:disabled { opacity:.45; cursor:default; }
+    .port-page-status { color:var(--muted); margin-right:auto; }
+    .port-card[hidden], .port-empty[hidden] { display:none !important; }
     .open-ports-wrap {
       margin-top: 24px;
-      max-height: min(620px, 64vh);
-      overflow: auto;
-      padding-right: 4px;
+      /* Expanded cards follow the page flow instead of nesting scroll areas. */
+      overflow: visible;
     }
     .open-ports-wrap .port-card:last-child {
       margin-bottom: 0;
@@ -2185,10 +2191,10 @@ generate_html_report() {
       margin-left: 8px;
     }
     .port-host-list {
-      margin: 14px 16px;
+      margin: 12px 16px;
     }
     .port-host-list > .copy-targets-toolbar {
-      padding: 0 0 12px;
+      padding: 0 0 8px;
     }
     .port-card > .artifact {
       margin: 14px 16px;
@@ -2196,7 +2202,11 @@ generate_html_report() {
       border-radius: 8px;
     }
     .port-card .targets {
-      padding: 12px 14px;
+      padding: 0;
+      max-height: none;
+      overflow: visible;
+      font-size: 13px;
+      line-height: 1.6;
     }
     .target-panel, .result-panel {
       margin: 10px 16px;
@@ -2391,6 +2401,20 @@ HTML
   if [[ ! -s "$open_tsv" || "$open_rows" -eq 0 ]]; then
     printf '  <div class="empty">No open ports were confirmed.</div>\n' >> "$report_file"
   else
+    cat >> "$report_file" <<'PORT_CONTROLS'
+  <div class="port-pagination">
+    <input type="search" id="portSearch" aria-label="Search ports or services" placeholder="Search port or service…">
+    <label for="portPageSize">Ports per page</label>
+    <select id="portPageSize"><option value="10">10</option><option value="25">25</option><option value="50">50</option><option value="all">All</option></select>
+  </div>
+  <div class="port-pagination">
+    <span id="portPageStatus" class="port-page-status" role="status" aria-live="polite"></span>
+    <button type="button" class="port-page-button" id="portPrevious" aria-label="Previous ports page">← Previous</button>
+    <span id="portPageNumber"></span>
+    <button type="button" class="port-page-button" id="portNext" aria-label="Next ports page">Next →</button>
+  </div>
+  <p class="empty port-empty" id="portEmpty" hidden>No ports or services match your search.</p>
+PORT_CONTROLS
     printf '  <div class="open-ports-wrap">\n' >> "$report_file"
     while IFS=$'\t' read -r proto port target; do
       key="${proto}/${port}"
@@ -2569,6 +2593,43 @@ HTML
   toggle.addEventListener('click', () => {
     setTheme(root.dataset.theme === 'dark' ? 'light' : 'dark');
   });
+
+  const portSearch = document.getElementById('portSearch');
+  if (portSearch) {
+    const cards = [...document.querySelectorAll('.open-ports-wrap > .port-card')];
+    const size = document.getElementById('portPageSize');
+    const previous = document.getElementById('portPrevious');
+    const next = document.getElementById('portNext');
+    let page = 1;
+    function renderPorts() {
+      const query = portSearch.value.trim().toLowerCase();
+      const matches = cards.filter(card => card.querySelector('.port-summary').textContent.toLowerCase().includes(query));
+      const limit = size.value === 'all' ? Math.max(matches.length, 1) : Number(size.value);
+      const pages = Math.max(1, Math.ceil(matches.length / limit));
+      page = Math.min(Math.max(page, 1), pages);
+      const start = (page - 1) * limit;
+      const visible = new Set(matches.slice(start, start + limit));
+      cards.forEach(card => {
+        card.hidden = !visible.has(card);
+        if (card.hidden) {
+          card.open = false;
+          card.querySelectorAll('details').forEach(detail => { detail.open = false; });
+        }
+      });
+      document.getElementById('portPageStatus').textContent = matches.length
+        ? `Showing ${start + 1}–${Math.min(start + limit, matches.length)} of ${matches.length} ports`
+        : 'Showing 0 of 0 ports';
+      document.getElementById('portPageNumber').textContent = `Page ${page} of ${pages}`;
+      document.getElementById('portEmpty').hidden = matches.length !== 0;
+      previous.disabled = page === 1;
+      next.disabled = page === pages;
+    }
+    portSearch.addEventListener('input', () => { page = 1; renderPorts(); });
+    size.addEventListener('change', () => { page = 1; renderPorts(); });
+    previous.addEventListener('click', () => { page--; renderPorts(); });
+    next.addEventListener('click', () => { page++; renderPorts(); });
+    renderPorts();
+  }
 
   const serviceSearch = document.getElementById('serviceSearch');
   const servicesTable = document.getElementById('servicesTable');
