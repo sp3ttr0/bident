@@ -145,9 +145,36 @@ result_output_has_finding() {
 
 external_output_has_error() {
   local output="$1" start_line="${2:-1}"
-  # Consume the full stream so pipefail does not turn grep matches into
-  # false negatives when the producer receives SIGPIPE.
-  tail -n "+${start_line}" "$output" | grep -Ei 'Traceback \(most recent call last\)|AttributeError:|ImportError:|ModuleNotFoundError:|SyntaxError:|PermissionError:|permission denied|operation not permitted|read-only file system|exception while calling proto_flow|command not found|connection refused|connection reset|no route to host|timed out|no servers could be reached|network is unreachable|cannot connect|unable to connect|can.t contact LDAP server|^ldap_[a-z_]+:|^fatal([ :]|$)|^error([ :]|$)|status: (SERVFAIL|REFUSED|FORMERR)' > /dev/null
+  # Inspect diagnostic records, not error-related words in banners, LDAP
+  # attributes, share names, cipher explanations, or module descriptions.
+  tail -n "+${start_line}" "$output" | awk '
+    BEGIN { esc = sprintf("%c", 27) }
+    {
+      gsub(esc "\\[[0-?]*[ -/]*[@-~]", "")
+      line=$0
+      sub(/^[[:space:]]+/, "", line)
+      if (line ~ /^Traceback \(most recent call last\):/ ||
+          line ~ /^([[:alnum:]_]+[.])*[[:alnum:]_]*(Error|Exception):[[:space:]]/) failed=1
+      # NetExec prefixes diagnostics with protocol/host columns. Only its
+      # failure marker may introduce an error; data/status records may not.
+      if (line ~ /^(SMB|LDAP|SSH|MSSQL|RDP|WINRM|WMI|FTP)[[:space:]]/) {
+        if (line !~ /\[[-!]\]/) next
+        sub(/^.*\[[-!]\][[:space:]]*/, "", line)
+      }
+      lower=tolower(line)
+      if (lower ~ /^\[(error|fatal|critical|exception)\][[:space:]]/ ||
+          lower ~ /^(error|fatal error|fatal|critical):[[:space:]]/ ||
+          lower ~ /^exception while calling proto_flow([[:space:]:]|$)/ ||
+          lower ~ /^ldap_[a-z_]+(\([^)]*\))?:[[:space:]]/ ||
+          lower ~ /^cannot connect to server[.]/ ||
+          lower ~ /^(permission denied|operation not permitted|read-only file system|connection refused|connection reset|no route to host|network is unreachable|timed out|command not found)[.![:space:]]*$/ ||
+          lower ~ /^(cannot connect|unable to connect|connection refused|connection reset|permission denied|operation not permitted|read-only file system):[[:space:]]/ ||
+          lower ~ /^(cannot connect|unable to connect) to[[:space:]]/ ||
+          lower ~ /^;;[[:space:]]*(communications error to|connection timed out|no servers could be reached)/ ||
+          (lower ~ /^;;[[:space:]]*->>header<<-/ && lower ~ /status: (servfail|formerr)(,|[[:space:]]|$)/)) failed=1
+    }
+    END {exit !failed}
+  '
 }
 
 startup_output_has_error() {
