@@ -273,6 +273,7 @@ run_rpc_135_checks() {
   done < <(open_target_ports tcp 135)
 
   if [[ "$found" == false ]]; then
+    printf '%sNo MSRPC (135) Found%s\n' "$CLR_YELLOW" "$CLR_RESET"
     return
   fi
 }
