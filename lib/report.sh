@@ -1074,6 +1074,24 @@ append_known_vulnerabilities_section() {
   rm -f "$cards"
 }
 
+print_collection_controls() {
+  local key="$1" label="$2"
+  cat <<CONTROLS
+  <div class="port-pagination" data-collection-controls="$key">
+    <input type="search" id="${key}Search" aria-label="Search $label" placeholder="Search $label or host…">
+    <label for="${key}PageSize">Per page</label>
+    <select id="${key}PageSize"><option value="10">10</option><option value="25">25</option><option value="50">50</option><option value="all">All</option></select>
+  </div>
+  <div class="port-pagination">
+    <span id="${key}PageStatus" class="port-page-status" role="status" aria-live="polite"></span>
+    <button type="button" class="port-page-button" id="${key}Previous" aria-label="Previous $label page">← Previous</button>
+    <span id="${key}PageNumber"></span>
+    <button type="button" class="port-page-button" id="${key}Next" aria-label="Next $label page">Next →</button>
+  </div>
+  <p class="empty" id="${key}Empty" hidden>No matching $label.</p>
+CONTROLS
+}
+
 append_findings_summary_section() {
   local outfile="$1"
   local temp_file
@@ -1107,6 +1125,7 @@ append_findings_summary_section() {
     print_report_section_heading 'Findings Summary' expandAll collapseAll reportToggleStatus findings "$(awk '/^[[:space:]]*<li><details class="finding-panel">/ {n++} END {print n+0}' "$temp_file")"
     printf '  <p class="muted">Review each finding and its full evidence carefully before taking action. Automated results may contain false positives.</p>\n'
     if [[ -s "$temp_file" ]]; then
+      print_collection_controls findings findings
       printf '  <ul class="finding-list">\n'
       cat "$temp_file"
       printf '  </ul>\n'
@@ -1149,7 +1168,6 @@ append_credential_summary_section() {
   local line_text
   local display_value
   local total_count=0
-  local max_items=80
   local endpoint endpoint_verified
 
   temp_file="$(mktemp "${TMPDIR:-/tmp}/bident_credentials.XXXXXX")"
@@ -1159,7 +1177,6 @@ append_credential_summary_section() {
     while IFS=$'\034' read -r line_number line_text display_value endpoint; do
       [[ -n "${line_text:-}" ]] || continue
       total_count=$((total_count + 1))
-      [[ "$total_count" -le "$max_items" ]] || continue
       if [[ -z "$display_value" ]]; then
         display_value="$(credential_display_value "$line_text")"
       fi
@@ -1186,12 +1203,10 @@ append_credential_summary_section() {
     printf '  <p class="muted">Review each entry, its Host:Port, and the supporting output carefully. Enumerated usernames alone do not confirm valid credentials.</p>\n'
     if [[ -s "$temp_file" ]]; then
       printf '  <div class="copy-targets-toolbar"><button class="copy-targets copy-credentials" type="button" data-copy-mode="entries" title="Copy displayed username/credential entries with Host:Port, separated by tabs">Copy Credentials %s</button><button class="copy-targets copy-credentials" type="button" data-copy-mode="targets" title="Copy unique verified Host:Port values only">Copy Hosts %s</button><span class="copy-targets-status muted" role="status" aria-live="polite"></span></div>\n' "$(print_copy_icon)" "$(print_copy_icon)"
+      print_collection_controls credentials credentials
       printf '  <ul class="finding-list credential-list">\n'
       cat "$temp_file"
       printf '  </ul>\n'
-      if [[ "$total_count" -gt "$max_items" ]]; then
-        printf '  <p class="muted">Showing first %s of %s possible credential-related line(s).</p>\n' "$max_items" "$total_count"
-      fi
     else
       printf '  <div class="empty">No username or credential-related lines were detected in saved result files.</div>\n'
     fi
@@ -1989,7 +2004,7 @@ generate_html_report() {
     .port-page-button { cursor:pointer; }
     .port-page-button:disabled { opacity:.45; cursor:default; }
     .port-page-status { color:var(--muted); margin-right:auto; }
-    .port-card[hidden], .port-empty[hidden] { display:none !important; }
+    .finding-list > li[hidden], .empty[hidden], .port-card[hidden], .port-empty[hidden] { display:none !important; }
     .open-ports-wrap {
       margin-top: 24px;
       /* Expanded cards follow the page flow instead of nesting scroll areas. */
@@ -2496,7 +2511,7 @@ PORT_CONTROLS
 <script>
   // REPORT_TOGGLES_START
   function toggleSectionDetails(selector, statusId, open) {
-    const sections = document.querySelectorAll(selector);
+    const sections = Array.from(document.querySelectorAll(selector)).filter(section => !section.closest('li[hidden]'));
     sections.forEach(section => { section.open = open; });
     document.getElementById(statusId).textContent = `${open ? 'Expanded' : 'Collapsed'} ${sections.length} sections.`;
   }
@@ -2593,6 +2608,45 @@ PORT_CONTROLS
   toggle.addEventListener('click', () => {
     setTheme(root.dataset.theme === 'dark' ? 'light' : 'dark');
   });
+
+  function paginateCollection(key, selector) {
+    const search = document.getElementById(`${key}Search`);
+    if (!search) return;
+    const items = [...document.querySelectorAll(selector)];
+    const size = document.getElementById(`${key}PageSize`);
+    const previous = document.getElementById(`${key}Previous`);
+    const next = document.getElementById(`${key}Next`);
+    let page = 1;
+    function render() {
+      const query = search.value.trim().toLowerCase();
+      const matches = items.filter(item => {
+        const title = item.querySelector('summary')?.textContent || '';
+        const hosts = [...item.querySelectorAll('[data-affected-targets], .credential-endpoint')].map(el => el.textContent).join(' ');
+        return `${title} ${hosts}`.toLowerCase().includes(query);
+      });
+      const limit = size.value === 'all' ? Math.max(matches.length, 1) : Number(size.value);
+      const pages = Math.max(1, Math.ceil(matches.length / limit));
+      page = Math.min(Math.max(page, 1), pages);
+      const start = (page - 1) * limit;
+      const visible = new Set(matches.slice(start, start + limit));
+      items.forEach(item => {
+        item.hidden = !visible.has(item);
+        if (item.hidden) item.querySelectorAll('details').forEach(detail => { detail.open = false; });
+      });
+      document.getElementById(`${key}PageStatus`).textContent = matches.length ? `Showing ${start + 1}–${Math.min(start + limit, matches.length)} of ${matches.length} ${key}` : `Showing 0 of 0 ${key}`;
+      document.getElementById(`${key}PageNumber`).textContent = `Page ${page} of ${pages}`;
+      document.getElementById(`${key}Empty`).hidden = matches.length !== 0;
+      previous.disabled = page === 1;
+      next.disabled = page === pages;
+    }
+    search.addEventListener('input', () => { page = 1; render(); });
+    size.addEventListener('change', () => { page = 1; render(); });
+    previous.addEventListener('click', () => { page--; render(); });
+    next.addEventListener('click', () => { page++; render(); });
+    render();
+  }
+  paginateCollection('findings', '#findingsSummary > .finding-list > li');
+  paginateCollection('credentials', '[data-credential-copy] > .credential-list > li');
 
   const portSearch = document.getElementById('portSearch');
   if (portSearch) {
