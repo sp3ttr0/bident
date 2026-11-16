@@ -150,6 +150,24 @@ external_output_has_error() {
   tail -n "+${start_line}" "$output" | grep -Ei 'Traceback \(most recent call last\)|AttributeError:|ImportError:|ModuleNotFoundError:|SyntaxError:|PermissionError:|permission denied|operation not permitted|read-only file system|exception while calling proto_flow|command not found|connection refused|connection reset|no route to host|timed out|no servers could be reached|network is unreachable|cannot connect|unable to connect|can.t contact LDAP server|^ldap_[a-z_]+:|^fatal([ :]|$)|^error([ :]|$)|status: (SERVFAIL|REFUSED|FORMERR)' > /dev/null
 }
 
+startup_output_has_error() {
+  # Help/module descriptions can mention errors without reporting one.
+  # Startup probes have no remote targets: match diagnostic lines, not words
+  # such as "timed out" or "permission denied" anywhere in their output.
+  awk '
+    BEGIN { esc = sprintf("%c", 27) }
+    {
+      gsub(esc "\\[[0-?]*[ -/]*[@-~]", "")
+      if ($0 ~ /^[[:space:]]*Traceback \(most recent call last\):/ ||
+          $0 ~ /^[[:space:]]*([[:alnum:]_]+[.])*[[:alnum:]_]*(Error|Exception):[[:space:]]/ ||
+          $0 ~ /^[[:space:]]*(ERROR|FATAL|CRITICAL):[[:space:]]/ ||
+          $0 ~ /^[[:space:]]*\[(ERROR|FATAL|CRITICAL)\][[:space:]]/ ||
+          $0 ~ /^[^[:space:]]+:[[:space:]]+(command not found|Permission denied|No such file or directory)([[:space:]:]|$)/) failed=1
+    }
+    END {exit !failed}
+  ' "$1"
+}
+
 rpc_anonymous_access_denied() {
   local output="$1"
   local denial='^[[:space:]]*(Cannot connect to server[.][[:space:]]*Error was[[:space:]]+)?NT_STATUS_ACCESS_DENIED[[:space:]]*$'
@@ -191,7 +209,11 @@ run_external_capture() {
   elif [[ "$rc" -eq 124 || "$rc" -eq 137 ]]; then status="Incomplete: timeout or forced termination (exit ${rc})"
   elif [[ "$rc" -ne 0 ]]; then status="Incomplete: command failed (exit ${rc})"
   fi
-  if external_output_has_error "$output"; then
+  if [[ "$label" == *'startup check' ]]; then
+    if startup_output_has_error "$output"; then
+      status='Incomplete: tool startup error'
+    fi
+  elif external_output_has_error "$output"; then
     status='Incomplete: tool or connection error'
   fi
   if [[ "$tool" == netexec ]] && nxc_smb_enumeration_label "$label" &&
