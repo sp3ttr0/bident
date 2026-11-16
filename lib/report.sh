@@ -453,18 +453,9 @@ finding_file_has_verified_evidence() {
   esac
 }
 
-print_cipher_list() {
-  local cipher
-  printf '<ul class="cipher-list">'
-  while IFS= read -r cipher; do
-    [[ -n "$cipher" ]] && printf '<li>%s</li>' "$(html_escape_text "$cipher")"
-  done
-  printf '</ul>'
-}
-
 append_ssh_weak_cipher_finding() {
   local outfile="$1" source_file="${TOOL_DIR}/ssh-audit_results.txt"
-  local rows target ciphers target_count
+  local rows target_count
   [[ -s "$source_file" ]] || return 0
   rows="$(ssh_weak_cipher_rows "$source_file" | awk -F '\t' '
     !seen[$1 SUBSEP $2]++ {
@@ -482,15 +473,7 @@ append_ssh_weak_cipher_finding() {
   {
     printf '    <li><details class="finding-panel">\n'
     printf '      <summary><div><strong>Weak SSH Ciphers</strong><span>%s affected host(s)</span></div></summary>\n' "$target_count"
-    printf '      <div data-affected-targets>\n'
-    print_copy_targets_button
-    printf '      <div class="service-table-wrap"><table class="service-table"><thead><tr><th>Host:Port</th><th>Weak/Deprecated Ciphers Found:</th></tr></thead><tbody>\n'
-    while IFS=$'\t' read -r target ciphers; do
-      printf '        <tr><td>%s</td><td>' "$(html_escape_text "$target")"
-      printf '%s\n' "$ciphers" | awk 'BEGIN {RS=", "} {print}' | print_cipher_list
-      printf '</td></tr>\n' 
-    done <<< "$rows"
-    printf '      </tbody></table></div></div>\n'
+    append_affected_endpoint_list "$(printf '%s\n' "$rows" | cut -f1)"
     printf '      <details class="artifact"><summary>Full Evidence — %s</summary><pre class="finding-evidence">' "$(html_escape_text "$source_file")"
     html_escape_file_preview "$source_file"
     printf '</pre></details>\n'
