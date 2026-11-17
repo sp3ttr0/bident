@@ -1999,6 +1999,7 @@ generate_html_report() {
       overflow: hidden;
     }
     .port-pagination { display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin-top:18px; }
+    .port-pagination + .port-pagination { margin-bottom:24px; }
     .port-pagination input, .port-pagination select, .port-page-button { font:inherit; color:var(--text); background:var(--panel); border:1px solid var(--line); border-radius:4px; padding:8px 12px; }
     .port-pagination input { flex:1; min-width:180px; }
     .port-page-button { cursor:pointer; }
