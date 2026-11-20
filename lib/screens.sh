@@ -48,9 +48,18 @@ start_screen_scan() {
 }
 
 start_responder() {
-  screen -dmS responder bash -lc "${PRIVILEGED_CMD_PREFIX} responder -I ${RESPONDER_INTERFACE} -dwv"
+  local output="${RESULTS_DIR:-$PWD}/responder" command_text owner_uid="" owner_gid=""
+  if [[ -n "${BIDENT_RUN_USER:-}" ]]; then
+    owner_uid="$(id -u "$BIDENT_RUN_USER")"
+    owner_gid="$(id -g "$BIDENT_RUN_USER")"
+  fi
+  mkdir -p "$output/logs" "$output/captures"
+  printf -v command_text '%s python3 %q %q %q %q %q' "${PRIVILEGED_CMD_PREFIX}" \
+    "${BIDENT_ROOT}/lib/responder.py" "$output" "$RESPONDER_INTERFACE" "$owner_uid" "$owner_gid"
+  screen -L -Logfile "$output/logs/console.log" -dmS responder bash -lc "exec $command_text"
   printf '%sStarted Screen Session:%s responder\n' "$CLR_GREEN" "$CLR_RESET"
   printf '%sResponder Interface:%s %s\n' "$CLR_CYAN" "$CLR_RESET" "$RESPONDER_INTERFACE"
+  printf '%sResponder Output:%s %s (logs/ and captures/)\n' "$CLR_CYAN" "$CLR_RESET" "$output"
   printf '%sResponder Will Continue Running After Bident Finishes.%s\n' "$CLR_YELLOW" "$CLR_RESET"
 }
 

@@ -16,6 +16,7 @@
 !/lib/nmap_vulns.py
 !/lib/metasploit.sh
 !/lib/ports.sh
+!/lib/responder.py
 !/lib/report.sh
 !/lib/screens.sh
 !/lib/tls_findings.awk

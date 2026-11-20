@@ -32,7 +32,7 @@ Put the hosts to assess in `scope.txt`. Run `./bident.sh --help` for all options
 | `--no-udp` | Skip UDP scans and follow-up checks. |
 | `--no-msf` | Skip Metasploit checks. |
 | `-T1` … `-T5` | Set Nmap timing; lower is slower, higher is more aggressive. Default: `-T4`. |
-| `--responder` | Start Responder in a separate screen session, using `eth0` by default. It may remain running after the scan. |
+| `--responder` | Start Responder in a separate screen session, using `eth0` by default. Logs and native hash files are saved under `responder/logs/` and `responder/captures/` in the results folder. It may remain running after the scan. |
 | `--script-timeout <duration>` | Limit each NSE script instance. Default: `30m`; `0` means unlimited. This is not a host or whole-scan timeout. |
 | `--tool-timeout <seconds>` | Limit external commands using the shared timeout runner. Default: `0` (unlimited). testssl and sslscan retain their separate 30-minute limit per tool per host. Requires `timeout`. |
 | `--msf-timeout <seconds>` | Limit each Metasploit module run across its port-group hosts. Default: `120`; `0` means unlimited. Requires `timeout`. |

@@ -38,6 +38,7 @@ Scan options:
       are more aggressive. Default: -T4. This is not a total scan time limit.
   --responder
       Start Responder in a separate screen session on eth0 by default.
+      Save logs and native capture files under <results-dir>/responder/.
       This optional service can remain running after the scan finishes.
 
 Timeouts and parallel checks:
